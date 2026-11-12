@@ -1,0 +1,27 @@
+#!/bin/sh
+# Test stand-in for ssh: drops ssh options and the host, then runs the remote
+# command locally. Emulates authorized_keys forced commands:
+#   backup key  -> $FAKESSH_FORCED          (e.g. "rrsync -ro /some/dir")
+#   restore key -> $FAKESSH_FORCED_RESTORE  (unset = key not authorized)
+key=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -i) key="$2"; shift 2 ;;
+    -p|-o|-l) shift 2 ;;
+    -*) shift ;;
+    *) break ;;
+  esac
+done
+shift  # host
+case "$key" in
+  *_restore)
+    if [ -z "$FAKESSH_FORCED_RESTORE" ]; then
+      echo "root@client: Permission denied (publickey)." >&2
+      exit 255
+    fi
+    SSH_ORIGINAL_COMMAND="$*" exec $FAKESSH_FORCED_RESTORE ;;
+esac
+if [ -n "$FAKESSH_FORCED" ]; then
+  SSH_ORIGINAL_COMMAND="$*" exec $FAKESSH_FORCED
+fi
+exec sh -c "$*"

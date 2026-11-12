@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}{{ host.name }} {{ snap|snap }} · Browse{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="/">Hosts</a> / <a href="/hosts/{{ host.id }}">{{ host.name }}</a> /</div>
+<div class="pagehead">
+  <h1>{{ snap|snap }}</h1>
+  <form method="get" class="snapswitch" id="snapswitch">
+    <label>Same path in snapshot
+      <select onchange="location.href='/hosts/{{ host.id }}/browse/' + this.value + '?path={{ rel|urlencode }}'">
+        {% for s in snaps %}<option value="{{ s }}" {% if s == snap %}selected{% endif %}>{{ s|snap }}</option>{% endfor %}
+      </select>
+    </label>
+  </form>
+</div>
+
+<nav class="path">
+  <a href="/hosts/{{ host.id }}/browse/{{ snap }}">/</a>
+  {%- for p in parts -%}
+    {%- set sub = parts[:loop.index]|join('/') -%}
+    <a href="/hosts/{{ host.id }}/browse/{{ snap }}?path={{ sub|urlencode }}">{{ p }}</a>{% if not loop.last %}/{% endif %}
+  {%- endfor %}
+  {% if entries is not none %}
+  <span class="path-actions">
+    <a class="button small" href="/hosts/{{ host.id }}/download/{{ snap }}?path={{ rel|urlencode }}">Download folder (.tar.gz)</a>
+    <a class="button small primary" href="/hosts/{{ host.id }}/restore/{{ snap }}?path={{ rel|urlencode }}">Restore {{ 'this folder' if rel else 'entire snapshot' }}…</a>
+  </span>
+  {% endif %}
+</nav>
+
+{% if file %}
+<div class="card">
+  <table class="kv">
+    <tr><th>Name</th><td>{{ file.name }}</td></tr>
+    <tr><th>Type</th><td>{{ file.kind }}{% if file.target %} → <code>{{ file.target }}</code>{% endif %}</td></tr>
+    <tr><th>Size</th><td>{{ file.size|bytes }} ({{ '{:,}'.format(file.size) }} bytes)</td></tr>
+    <tr><th>Modified</th><td>{{ file.mtime|dt }}</td></tr>
+    <tr><th>Mode</th><td><code>{{ file.mode }}</code> uid {{ file.uid }} gid {{ file.gid }}</td></tr>
+  </table>
+  {% if file.kind == 'file' %}
+  <p class="buttons"><a class="button primary" href="/hosts/{{ host.id }}/download/{{ snap }}?path={{ rel|urlencode }}">Download</a>
+    <a class="button" href="/hosts/{{ host.id }}/restore/{{ snap }}?path={{ rel|urlencode }}">Restore to client…</a></p>
+  {% endif %}
+</div>
+{% else %}
+<div class="tablewrap">
+<table class="files">
+  <thead><tr><th>Name</th><th>Size</th><th>Modified</th><th>Mode</th><th>Owner</th><th></th></tr></thead>
+  <tbody>
+  {% if parts %}
+    <tr><td colspan="6"><a href="/hosts/{{ host.id }}/browse/{{ snap }}?path={{ parts[:-1]|join('/')|urlencode }}">↑ ..</a></td></tr>
+  {% endif %}
+  {% for e in entries %}
+    {% set epath = (rel ~ '/' ~ e.name) if rel else e.name %}
+    <tr>
+      <td class="name {{ e.kind }}">
+        {% if e.kind == 'dir' %}
+          <a href="/hosts/{{ host.id }}/browse/{{ snap }}?path={{ epath|urlencode }}">{{ e.name }}/</a>
+        {% elif e.kind == 'link' %}
+          <span>{{ e.name }}</span> <span class="muted">→ {{ e.target }}</span>
+        {% else %}
+          <a href="/hosts/{{ host.id }}/browse/{{ snap }}?path={{ epath|urlencode }}">{{ e.name }}</a>
+        {% endif %}
+      </td>
+      <td>{% if e.kind == 'file' %}{{ e.size|bytes }}{% endif %}</td>
+      <td>{{ e.mtime|dt }}</td>
+      <td><code>{{ e.mode }}</code></td>
+      <td>{{ e.uid }}:{{ e.gid }}</td>
+      <td class="actions">
+        {% if e.kind in ('file', 'dir') %}
+        <a class="button small" href="/hosts/{{ host.id }}/download/{{ snap }}?path={{ epath|urlencode }}">{{ 'Download' if e.kind == 'file' else '.tar.gz' }}</a>
+        <a class="button small" href="/hosts/{{ host.id }}/restore/{{ snap }}?path={{ epath|urlencode }}">Restore…</a>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="muted">empty directory</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

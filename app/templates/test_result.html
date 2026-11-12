@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Connection test · {{ host.name }}{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="/">Hosts</a> / <a href="/hosts/{{ host.id }}">{{ host.name }}</a> /</div>
+<h1>Connection test</h1>
+{% if ok %}
+<div class="flash success">Connected to {{ host.user }}@{{ host.address }} and listed <code>/</code> with rsync. Backups should work.</div>
+{% else %}
+<div class="flash error">Connection failed.</div>
+<div class="card">
+  <p><strong>Common causes</strong></p>
+  <ul>
+    <li><code>Permission denied (publickey)</code>: the server's key is not in <code>/root/.ssh/authorized_keys</code> on the client (see <a href="/setup">Setup</a>), or <code>PermitRootLogin</code> is <code>no</code> (use <code>prohibit-password</code>).</li>
+    <li><code>rrsync: command not found</code>: install rsync ≥ 3.2.4 on the client, or point the forced command to the full rrsync path.</li>
+    <li><code>rsync: command not found</code>: install rsync on the client.</li>
+    <li><code>REMOTE HOST IDENTIFICATION HAS CHANGED</code>: the client was reinstalled; use “Forget SSH host key” on the host page.</li>
+  </ul>
+</div>
+{% endif %}
+<pre class="log">{{ output }}</pre>
+
+<h2>Restore access</h2>
+{% if restore_ok %}
+<div class="flash success">The restore key is authorised: you can restore to this host from the web UI.</div>
+{% else %}
+<div class="flash">The restore key is not authorised on this host (optional). To restore from the web UI, add this line to <code>/root/.ssh/authorized_keys</code>:</div>
+<pre class="copy">{{ restore_line }}</pre>
+<details><summary>Output</summary><pre class="log">{{ restore_output }}</pre></details>
+{% endif %}
+<p><a class="button" href="/hosts/{{ host.id }}">Back to {{ host.name }}</a></p>
+{% endblock %}

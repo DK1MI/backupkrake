@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Log in · Backupkrake{% endblock %}
+{% block content %}
+<div class="login">
+  <h1>Backupkrake</h1>
+  <form method="post" action="/login" class="card stack">
+    <label>Username <input name="username" autocomplete="username" required autofocus></label>
+    <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+    <button class="primary">Log in</button>
+  </form>
+</div>
+{% endblock %}

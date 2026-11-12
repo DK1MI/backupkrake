@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Restore · {{ host.name }} · Backupkrake{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="/">Hosts</a> / <a href="/hosts/{{ host.id }}">{{ host.name }}</a> /
+  <a href="/hosts/{{ host.id }}/browse/{{ snap }}?path={{ rel|urlencode }}">{{ snap|snap }}</a> /</div>
+<h1>Restore to client</h1>
+
+<div class="card restore-source">
+  <div class="label">Restoring</div>
+  <div class="value"><code>/{{ rel }}</code>{% if is_dir %} <span class="muted">(folder, including everything inside)</span>{% endif %}
+    {% if not rel %}<strong class="danger"> (entire snapshot)</strong>{% endif %}</div>
+  <div class="sub">from <strong>{{ host.name }}</strong>, snapshot {{ snap|snap }}</div>
+</div>
+
+{% if errors %}
+<div class="flash error"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+<form method="post" class="form" id="restore-form">
+  <fieldset class="card">
+    <legend>Target</legend>
+    <label>Host
+      <select name="target_host_id">
+        {% for h in hosts %}<option value="{{ h.id }}" {% if h.id == form.target_host_id %}selected{% endif %}>{{ h.name }}{% if h.id == host.id %} (original host){% endif %}</option>{% endfor %}
+      </select>
+    </label>
+
+    <div class="choices">
+      <label class="choice">
+        <input type="radio" name="mode" value="staging" {% if form.mode == 'staging' %}checked{% endif %}>
+        <span><strong>Staging directory</strong> <span class="tag">safe</span><br>
+        <small>Copied to <code>{{ staging }}/{{ rel }}</code> on the target. Nothing existing is touched; compare and move files yourself.</small></span>
+      </label>
+      <label class="choice">
+        <input type="radio" name="mode" value="original" {% if form.mode == 'original' %}checked{% endif %}>
+        <span><strong>Original location</strong><br>
+        <small>Written back to <code>/{{ rel }}</code>, overwriting the current files.</small></span>
+      </label>
+      <label class="choice">
+        <input type="radio" name="mode" value="custom" {% if form.mode == 'custom' %}checked{% endif %}>
+        <span><strong>Other directory</strong><br>
+        <small>The path is recreated below this directory, e.g. <code>/srv/restore/{{ rel or '…' }}</code>.</small>
+        <input name="custom_dir" value="{{ form.custom_dir }}" placeholder="/srv/restore"></span>
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>Options</legend>
+    <div class="checks">
+      <label><input type="checkbox" name="keep_backups" value="1" {% if form.keep_backups %}checked{% endif %}>
+        Keep a copy of every overwritten or deleted file (<code>name.bkrestore-&lt;time&gt;</code>)</label>
+      {% if rel and is_dir %}
+      <label><input type="checkbox" name="delete" value="1" {% if form.delete %}checked{% endif %}>
+        Delete files in the target folder that are not in the snapshot <small>(makes it an exact copy; paths excluded from backups are left alone)</small></label>
+      {% endif %}
+      <label class="confirm-original"><input type="checkbox" name="confirm" value="1">
+        I understand that files at the original location will be overwritten</label>
+    </div>
+  </fieldset>
+
+  <div class="buttons">
+    <button class="primary" name="action" value="preview">Preview (dry run)</button>
+    <button name="action" value="restore" class="danger">Restore now</button>
+    <a class="button" href="/hosts/{{ host.id }}/browse/{{ snap }}?path={{ rel|urlencode }}">Cancel</a>
+  </div>
+  <p class="sub">The preview lists every file that would be created, changed or deleted, without writing anything. You can start the real restore from the preview's result page.</p>
+</form>
+
+<details class="card hint">
+  <summary>Requires the restore key on the target host</summary>
+  <p>Add this line to <code>/root/.ssh/authorized_keys</code> on every host you want to restore to. It can only write files, never read them.</p>
+  <pre class="copy">{{ restore_line }}</pre>
+</details>
+{% endblock %}

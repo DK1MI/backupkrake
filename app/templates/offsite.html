@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Offsite · Backupkrake{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>Offsite backup</h1>
+    <div class="sub">Uploads the latest snapshot of every host, encrypted with restic.
+      {% if s.enabled and next %}Next run {{ next|dt }}.{% endif %}</div>
+  </div>
+  {% if configured %}
+  <div class="buttons">
+    <form method="post" action="/offsite/run"><button class="primary">Run now</button></form>
+    <a class="button" href="/offsite/snapshots">Offsite snapshots</a>
+  </div>
+  {% endif %}
+</div>
+
+{% if errors %}
+<div class="flash error"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+<form method="post" class="form">
+  <fieldset class="card">
+    <legend>Repository</legend>
+    <label>Repository URL
+      <input name="repository" value="{{ s.repository }}" placeholder="s3:https://s3.eu-central-1.amazonaws.com/my-bucket/backup">
+      <small>Any restic backend, e.g. <code>sftp:user@host:/srv/restic</code>, <code>b2:bucket:path</code>, <code>rest:https://user:pass@host:8000/</code>, <code>s3:…</code></small>
+    </label>
+    <label>Encryption password
+      <input name="password" type="password" autocomplete="new-password" placeholder="{{ '•••••••• (unchanged; type to replace)' if s.password else 'required' }}">
+      <small><strong>Keep a copy of this password somewhere other than this server.</strong> Without it the offsite data cannot be decrypted.</small>
+    </label>
+    <label>Backend environment <small>KEY=VALUE per line, e.g. credentials</small>
+      <textarea name="env" rows="4" placeholder="AWS_ACCESS_KEY_ID=…&#10;AWS_SECRET_ACCESS_KEY=…">{{ s.env }}</textarea>
+    </label>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>Schedule &amp; retention</legend>
+    <div class="grid">
+      <label>Schedule (cron) <input name="schedule" value="{{ s.schedule }}" placeholder="0 5 * * *">
+        <small>Pick a time after your host backups usually finish.</small></label>
+      <label class="inline"><input type="checkbox" name="enabled" value="1" {% if s.enabled %}checked{% endif %}> Scheduled offsite runs enabled</label>
+    </div>
+    <div class="grid four">
+      <label>Keep daily <input type="number" min="0" name="keep_daily" value="{{ s.keep_daily }}"></label>
+      <label>Keep weekly <input type="number" min="0" name="keep_weekly" value="{{ s.keep_weekly }}"></label>
+      <label>Keep monthly <input type="number" min="0" name="keep_monthly" value="{{ s.keep_monthly }}"></label>
+      <label>Keep yearly <input type="number" min="0" name="keep_yearly" value="{{ s.keep_yearly }}"></label>
+    </div>
+    <label>Upload limit (KiB/s, 0 = unlimited) <input type="number" min="0" name="limit_upload" value="{{ s.limit_upload }}"></label>
+  </fieldset>
+
+  <div class="buttons"><button class="primary">Save</button></div>
+</form>
+
+{% if configured %}
+<div class="card">
+  <p><strong>Maintenance</strong></p>
+  <div class="buttons">
+    <form method="post" action="/offsite/init" data-confirm="Initialise a new restic repository at this location?"><button>Initialise repository</button></form>
+    <form method="post" action="/offsite/check"><button>Check repository</button></form>
+    <form method="post" action="/offsite/unlock"><button>Remove stale locks</button></form>
+  </div>
+  <p class="sub">Run “Initialise repository” once for a new, empty location.</p>
+</div>
+{% endif %}
+
+<h2>Recent offsite runs</h2>
+{% include "_runs_table.html" %}
+{% endblock %}

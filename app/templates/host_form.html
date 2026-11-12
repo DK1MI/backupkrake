@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Add host' if is_new else 'Edit ' ~ host.name }} · Backupkrake{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <h1>{{ 'Add host' if is_new else 'Edit ' ~ host.name }}</h1>
+</div>
+
+{% if errors %}
+<div class="flash error"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+<form method="post" class="form">
+  <fieldset class="card">
+    <legend>Connection</legend>
+    <div class="grid">
+      <label>Name
+        <input name="name" value="{{ host.name }}" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,62}" {% if not is_new %}readonly{% endif %}>
+        <small>Used as the snapshot folder name. Cannot be changed later.</small>
+      </label>
+      <label>Address
+        <input name="address" value="{{ host.address }}" required placeholder="server.lan or 192.168.1.10">
+      </label>
+      <label>SSH user <input name="user" value="{{ host.user }}" required></label>
+      <label>SSH port <input name="port" type="number" min="1" max="65535" value="{{ host.port }}" required></label>
+    </div>
+    <details class="hint">
+      <summary>Client setup: add this line to <code>/root/.ssh/authorized_keys</code></summary>
+      <pre class="copy">{{ authorized_keys }}</pre>
+      <p>This restricts the key to read-only rsync. See <a href="/setup">Setup</a> for details and the unrestricted variant (needed for pre/post commands).</p>
+    </details>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>What to back up</legend>
+    <div class="grid two">
+      <label>Paths <small>one absolute path per line</small>
+        <textarea name="paths" rows="8" required>{{ host.paths }}</textarea>
+      </label>
+      <label>Excludes <small>rsync patterns, one per line; leading <code>/</code> anchors to the filesystem root</small>
+        <textarea name="excludes" rows="8">{{ host.excludes }}</textarea>
+      </label>
+    </div>
+    <div class="checks">
+      <label><input type="checkbox" name="acls_xattrs" value="1" {% if host.acls_xattrs %}checked{% endif %}> Preserve ACLs and extended attributes</label>
+      <label><input type="checkbox" name="one_file_system" value="1" {% if host.one_file_system %}checked{% endif %}> Don't cross filesystem boundaries (<code>-x</code>)</label>
+    </div>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>Schedule &amp; retention</legend>
+    <div class="grid">
+      <label>Schedule (cron)
+        <input name="schedule" value="{{ host.schedule }}" placeholder="0 2 * * *">
+        <small>minute hour day month weekday. Empty = manual only.</small>
+      </label>
+      <label class="inline"><input type="checkbox" name="enabled" value="1" {% if host.enabled %}checked{% endif %}> Scheduled backups enabled</label>
+    </div>
+    <div class="grid">
+      <label>Backup window
+        <input name="backup_window" value="{{ host.backup_window }}" placeholder="any time, e.g. 22:00-06:00">
+        <small>Scheduled backups only start inside this window and are stopped when it ends (they resume next time). Several ranges: <code>01:00-05:00, 13:00-14:00</code>. “Back up now” ignores it.</small>
+      </label>
+      <label>Bandwidth limit
+        <input name="bwlimit" value="{{ host.bwlimit }}" placeholder="unlimited, e.g. 20M">
+        <small>Per second: <code>20M</code> = 20 MiB/s, <code>500K</code> or <code>500</code> = 500 KiB/s. Also used for restores to this host.</small>
+      </label>
+    </div>
+    <div class="grid four">
+      <label>Keep last <input name="keep_last" type="number" min="1" value="{{ host.keep_last }}"></label>
+      <label>Keep daily <input name="keep_daily" type="number" min="0" value="{{ host.keep_daily }}"></label>
+      <label>Keep weekly <input name="keep_weekly" type="number" min="0" value="{{ host.keep_weekly }}"></label>
+      <label>Keep monthly <input name="keep_monthly" type="number" min="0" value="{{ host.keep_monthly }}"></label>
+    </div>
+    <div class="grid">
+      <label>Overdue alert after (days)
+        <input name="max_age_days" type="number" min="0" max="3650" value="{{ host.max_age_days if host.max_age_days is not none else '' }}" placeholder="default (see Notifications)">
+        <small>Notify when there's no successful backup for this long. Empty = global default, 0 = never.</small>
+      </label>
+    </div>
+    <small>Unchanged files are hardlinked between snapshots, so extra snapshots mostly cost the size of what changed.</small>
+  </fieldset>
+
+  <details class="card advanced" {% if host.pre_cmd or host.post_cmd or host.extra_args %}open{% endif %}>
+    <summary>Advanced</summary>
+    <div class="grid">
+      <label>Pre-backup command <small>runs on the client via SSH, e.g. a database dump. A failure aborts the backup.</small>
+        <input name="pre_cmd" value="{{ host.pre_cmd }}" placeholder="pg_dumpall -U postgres > /var/backups/pg.sql">
+      </label>
+      <label>Post-backup command <small>runs after rsync, even if it failed</small>
+        <input name="post_cmd" value="{{ host.post_cmd }}">
+      </label>
+      <label>Extra rsync arguments
+        <input name="extra_args" value="{{ host.extra_args }}" placeholder="--bwlimit=20M">
+      </label>
+    </div>
+    <p class="note">Pre/post commands need an <strong>unrestricted</strong> key on the client; the read-only <code>rrsync</code> key only permits rsync.</p>
+  </details>
+
+  <div class="buttons">
+    <button class="primary">{{ 'Add host' if is_new else 'Save' }}</button>
+    <a class="button" href="{{ '/' if is_new else '/hosts/' ~ host.id }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Offsite snapshots · Backupkrake{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="/offsite">Offsite</a> /</div>
+<h1>Offsite snapshots</h1>
+{% if error %}
+<div class="flash error">{{ error }}</div>
+{% elif not snaps %}
+<p class="muted">No offsite snapshots yet.</p>
+{% else %}
+<p class="sub">Restoring writes the snapshot into <code>{{ restore_dir }}/offsite-…</code> on this server. From there you can browse it or copy it back to the client.</p>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>ID</th><th>Host</th><th>Local snapshot</th><th>Uploaded</th><th>Size</th><th></th></tr></thead>
+  <tbody>
+  {% for s in snaps %}
+    <tr>
+      <td><code>{{ s.short_id or s.id[:8] }}</code></td>
+      <td>{{ s.hostname }}</td>
+      <td>{{ s.local_snapshot|snap }}</td>
+      <td>{{ (s.summary.backup_end if s.summary is defined and s.summary else s.time)[:16]|replace('T', ' ') }}</td>
+      <td>{{ s.summary.total_bytes_processed|bytes if s.summary is defined and s.summary else '–' }}</td>
+      <td class="actions">
+        <form method="post" action="/offsite/restore/{{ s.id }}" data-confirm="Restore snapshot {{ s.short_id }} into {{ restore_dir }}?">
+          <button class="small">Restore to server</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Notifications · Backupkrake{% endblock %}
+{% macro secret(name, label, placeholder, help='') %}
+<label>{{ label }}
+  <input name="{{ name }}" type="password" autocomplete="off"
+         placeholder="{{ '•••••••• (saved; type to replace)' if secrets_set[name] else placeholder }}">
+  {% if help %}<small>{{ help|safe }}</small>{% endif %}
+  {% if secrets_set[name] %}<span class="inline-check"><input type="checkbox" name="clear_{{ name }}" value="1"> remove saved value</span>{% endif %}
+</label>
+{% endmacro %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>Notifications</h1>
+    <div class="sub">Get a push message when a backup fails.</div>
+  </div>
+  {% if active or s.heartbeat_url %}
+  <form method="post" action="/notifications/test"><button>Send test</button></form>
+  {% endif %}
+</div>
+
+{% if errors %}
+<div class="flash error"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+<form method="post" class="form">
+  <fieldset class="card">
+    <legend><label class="inline"><input type="checkbox" name="ntfy_enabled" value="1" {% if s.ntfy_enabled %}checked{% endif %}> ntfy</label></legend>
+    <div class="grid">
+      <label>Server <input name="ntfy_server" value="{{ s.ntfy_server }}" placeholder="https://ntfy.sh">
+        <small>Public ntfy.sh or your own instance</small></label>
+      <label>Topic <input name="ntfy_topic" value="{{ s.ntfy_topic }}" placeholder="backupkrake-x7f3k2">
+        <small>On ntfy.sh anyone who knows the topic can read it, so pick something hard to guess.</small></label>
+      <label>Priority on failure
+        <select name="ntfy_priority">
+          {% for v, n in [(5, '5 · max (urgent)'), (4, '4 · high'), (3, '3 · default'), (2, '2 · low'), (1, '1 · min')] %}
+          <option value="{{ v }}" {% if s.ntfy_priority == v %}selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select></label>
+    </div>
+    <details class="hint" {% if s.ntfy_username or secrets_set.ntfy_token %}open{% endif %}>
+      <summary>Authentication (for protected topics)</summary>
+      <div class="grid">
+        {{ secret('ntfy_token', 'Access token', 'tk_…', 'Takes precedence over username/password') }}
+        <label>Username <input name="ntfy_username" value="{{ s.ntfy_username }}" autocomplete="off"></label>
+        {{ secret('ntfy_password', 'Password', '') }}
+      </div>
+    </details>
+    {% if last.ntfy %}<p class="sub">Last delivery: {{ 'OK' if last.ntfy == 'ok' else last.ntfy }}</p>{% endif %}
+  </fieldset>
+
+  <fieldset class="card">
+    <legend><label class="inline"><input type="checkbox" name="pushover_enabled" value="1" {% if s.pushover_enabled %}checked{% endif %}> Pushover</label></legend>
+    <div class="grid">
+      {{ secret('pushover_user', 'User key', 'u…', 'Shown on your Pushover dashboard (a group key also works)') }}
+      {{ secret('pushover_token', 'Application API token', 'a…', 'Create an application at <a href="https://pushover.net/apps/build" target="_blank" rel="noopener">pushover.net/apps/build</a>') }}
+      <label>Priority on failure
+        <select name="pushover_priority">
+          {% for v, n in [(1, '1 · high (bypasses quiet hours)'), (0, '0 · normal'), (-1, '-1 · low (no sound)'), (-2, '-2 · lowest')] %}
+          <option value="{{ v }}" {% if s.pushover_priority == v %}selected{% endif %}>{{ n }}</option>{% endfor %}
+        </select></label>
+    </div>
+    {% if last.pushover %}<p class="sub">Last delivery: {{ 'OK' if last.pushover == 'ok' else last.pushover }}</p>{% endif %}
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>When to notify</legend>
+    <div class="checks">
+      <label><input type="checkbox" checked disabled> Host backup failed <small>(always)</small></label>
+      <label><input type="checkbox" name="on_offsite" value="1" {% if s.on_offsite %}checked{% endif %}> Offsite backup failed</label>
+      <label><input type="checkbox" name="on_restore" value="1" {% if s.on_restore %}checked{% endif %}> Restore failed</label>
+      <label><input type="checkbox" name="on_warning" value="1" {% if s.on_warning %}checked{% endif %}> Finished with warnings <small>(some files unreadable or vanished, post-command failed)</small></label>
+      <label><input type="checkbox" name="on_recovery" value="1" {% if s.on_recovery %}checked{% endif %}> Backup works again after a failure or overdue alert</label>
+    </div>
+    <label>Backupkrake URL <small>optional, makes notifications link to the run, e.g. <code>http://nas.lan:8080</code></small>
+      <input name="base_url" value="{{ s.base_url }}" placeholder="http://nas.lan:8080"></label>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>Overdue backups</legend>
+    <div class="grid">
+      <label>Alert when a host has no successful backup for
+        <span class="with-unit"><input name="stale_days" type="number" min="0" max="365" value="{{ s.stale_days }}"> days</span>
+        <small>0 = off. Hosts can override this in their settings. Checked hourly; reminders repeat once a day.</small>
+      </label>
+    </div>
+    <p class="sub">This also catches problems that never produce a failed run: a host whose schedule was switched off, a scheduler that stopped, or a server that was down. Once the server is back, the first check runs within a few minutes.</p>
+    {% if overdue %}<div class="flash error">Overdue right now: {{ overdue|join(', ') }}</div>{% endif %}
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>Heartbeat (dead man's switch)</legend>
+    <label>Heartbeat URL
+      <input name="heartbeat_url" value="{{ s.heartbeat_url }}" placeholder="https://hc-ping.com/your-uuid">
+      <small>Fetched every hour. Point it at an external monitor (e.g. <a href="https://healthchecks.io" target="_blank" rel="noopener">healthchecks.io</a> with a 1-hour period, or an Uptime Kuma push monitor); it alerts you when the pings stop, i.e. when Backupkrake itself is down, which Backupkrake can't report on its own.</small>
+    </label>
+    {% if last.heartbeat %}<p class="sub">Last ping: {{ 'OK' if last.heartbeat == 'ok' else last.heartbeat }}</p>{% endif %}
+  </fieldset>
+
+  <div class="buttons"><button class="primary">Save</button></div>
+</form>
+{% endblock %}

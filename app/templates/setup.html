@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Setup · Backupkrake{% endblock %}
+{% block content %}
+<h1>Client setup</h1>
+<p>Backupkrake connects to each client as <code>root</code> over SSH and pulls the files with rsync. Clients need only <code>rsync</code> (3.2.4 or newer includes <code>rrsync</code>) and the server's key.</p>
+
+<div class="card">
+  <h2>1. Install rsync on the client</h2>
+  <pre class="copy"># Debian / Ubuntu
+apt install rsync
+# Fedora / RHEL
+dnf install rsync
+# Arch
+pacman -S rsync
+# Alpine
+apk add rsync rrsync python3</pre>
+</div>
+
+<div class="card">
+  <h2>2. Authorise the server's key</h2>
+  <p><strong>Recommended: read-only.</strong> Add this line to <code>/root/.ssh/authorized_keys</code> on the client:</p>
+  <pre class="copy">{{ restricted }}</pre>
+  <p class="sub">The key can then only <em>read</em> files via rsync: no shell and no writes. If <code>rrsync</code> isn't on the PATH, use its full path, e.g. <code>/usr/share/doc/rsync/scripts/rrsync</code> on older systems (it may need to be unpacked and made executable).</p>
+
+  <p><strong>Unrestricted</strong> (needed for pre/post commands such as database dumps):</p>
+  <pre class="copy">{{ pubkey }}</pre>
+
+  <p>One-liner to run on the client as root (read-only variant):</p>
+  <pre class="copy">mkdir -p /root/.ssh &amp;&amp; chmod 700 /root/.ssh &amp;&amp; echo '{{ restricted }}' &gt;&gt; /root/.ssh/authorized_keys &amp;&amp; chmod 600 /root/.ssh/authorized_keys</pre>
+</div>
+
+<div class="card">
+  <h2>Optional: allow restores from the web UI</h2>
+  <p>Restores use a <strong>second key</strong> that can only <em>write</em>, so the backup key stays read-only. Add this line as well on every host you want to restore to:</p>
+  <pre class="copy">{{ restore_line }}</pre>
+  <p class="sub">Unrestricted variant: <code>{{ restore_pubkey }}</code>. By default, restores go to a staging directory on the client (<code>{{ staging }}/…</code>); overwriting the original files is an explicit choice.</p>
+</div>
+
+<div class="card">
+  <h2>3. Allow key-based root login</h2>
+  <p>In <code>/etc/ssh/sshd_config</code> on the client:</p>
+  <pre class="copy">PermitRootLogin prohibit-password</pre>
+  <p class="sub">Reload sshd afterwards (<code>systemctl reload ssh</code> or <code>sshd</code>). This permits key logins only, never passwords.</p>
+</div>
+
+<div class="card">
+  <h2>4. Add the host and test</h2>
+  <p><a href="/hosts/new">Add the host</a>, then use <strong>Test connection</strong>. The server learns the client's host key on first contact (trust on first use) and rejects it if it changes later.</p>
+</div>
+
+<div class="card">
+  <h2>Restoring</h2>
+  <ul>
+    <li><strong>Back to the client:</strong> browse a snapshot, pick a file or folder and choose <em>Restore…</em>. Run a preview (dry run) first, then restore into a staging directory, the original location or any other folder, on the same or a different host. This needs the restore key above.</li>
+    <li><strong>Download:</strong> browse a snapshot and download a file, or a folder as <code>.tar.gz</code>.</li>
+    <li><strong>Directly from the server's disk:</strong> snapshots are plain directories in <code>{{ data_dir }}/hosts/&lt;host&gt;/&lt;snapshot&gt;/</code>. From the Docker host, copy back with rsync, e.g.<br>
+      <code>rsync -aHAX --numeric-ids {{ data_dir }}/hosts/web1/latest/etc/nginx/ root@web1:/etc/nginx/</code></li>
+    <li><strong>After losing the server:</strong> restore from the offsite restic repository with any restic client and the repository password.</li>
+  </ul>
+</div>
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, run_kind %}
+{% block title %}Run #{{ run.id }} · Backupkrake{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="/runs">Runs</a> /{% if run.host_id %} <a href="/hosts/{{ run.host_id }}">{{ run.host_name }}</a> /{% endif %}</div>
+<div class="pagehead">
+  <div>
+    <h1>Run #{{ run.id }} <span id="status">{{ badge(run.status) }}</span></h1>
+    <div class="sub">{{ run_kind(run) }} · {{ run.trigger }} · started {{ run.started|dt }}{% if run.snapshot and not restore %} · snapshot
+      <a href="/hosts/{{ run.host_id }}/browse/{{ run.snapshot }}">{{ run.snapshot|snap }}</a>{% endif %}</div>
+    <div class="sub" id="summary">{{ run.summary }}</div>
+  </div>
+  {% if active %}
+  <form method="post" action="/runs/{{ run.id }}/cancel" id="cancel" data-confirm="Cancel this run?">
+    <button class="danger">Cancel</button>
+  </form>
+  {% endif %}
+</div>
+{% if restore %}
+<div class="card restore-source">
+  <div class="label">{{ 'Restore preview (dry run, nothing was written)' if restore.dry_run else 'Restore' }}</div>
+  <div class="value"><code>/{{ restore.path }}</code>{% if not restore.path %} <strong>(entire snapshot)</strong>{% endif %}
+    from <a href="/hosts/{{ restore.source_host_id }}/browse/{{ restore.snapshot }}?path={{ restore.path|urlencode }}">{{ restore.source_host }} @ {{ restore.snapshot|snap }}</a></div>
+  <div class="sub">to <strong>{{ restore.target_host }}:{{ restore.target_dir }}</strong>
+    · {{ {'staging': 'staging directory', 'original': 'original location', 'custom': 'custom directory'}[restore.mode] }}
+    {% if restore.delete %} · <strong>deletes extra files</strong>{% endif %}
+    {% if restore.keep_backups %} · keeps copies of overwritten files{% endif %}</div>
+  {% if run.stats.changes is defined %}
+  <div class="sub">{{ run.stats.changes }} change(s){% if run.stats.deletes %}, including {{ run.stats.deletes }} deletion(s){% endif %}.
+    Lines in the log: <code>&gt;f+++</code> new file, <code>&gt;f.st</code> changed file, <code>cd+++</code> new folder, <code>*deleting</code> removed.</div>
+  {% endif %}
+  {% if restore.dry_run and run.status in ('success', 'warning') %}
+  <form method="post" action="/runs/{{ run.id }}/execute-restore" class="row"
+        data-confirm="Run this restore for real on {{ restore.target_host }}?">
+    {% if restore.mode == 'original' %}
+    <label class="inline"><input type="checkbox" name="confirm" value="1" required> I understand that files at the original location will be overwritten</label>
+    {% endif %}
+    <button class="primary">Run this restore for real</button>
+    <a class="button" href="/hosts/{{ restore.source_host_id }}/restore/{{ restore.snapshot }}?path={{ restore.path|urlencode }}">Change options</a>
+  </form>
+  {% endif %}
+</div>
+{% endif %}
+{% if run.stats and not (restore and restore.dry_run) %}
+<section class="tiles small">
+  {% if run.stats.files is defined %}<div class="tile"><div class="label">Files</div><div class="value">{{ '{:,}'.format(run.stats.files) }}</div></div>{% endif %}
+  {% if run.stats.total_size is defined %}<div class="tile"><div class="label">Total size</div><div class="value">{{ run.stats.total_size|bytes }}</div></div>{% endif %}
+  {% if run.stats.files_transferred is defined %}<div class="tile"><div class="label">Files changed</div><div class="value">{{ '{:,}'.format(run.stats.files_transferred) }}</div></div>{% endif %}
+  {% if run.stats.transferred_size is defined %}<div class="tile"><div class="label">Transferred</div><div class="value">{{ run.stats.transferred_size|bytes }}</div></div>{% endif %}
+</section>
+{% endif %}
+<label class="inline follow"><input type="checkbox" id="follow" checked> Follow log</label>
+<pre class="log" id="log" data-run="{{ run.id }}" data-active="{{ 1 if active else 0 }}"></pre>
+{% endblock %}
+{% block scripts %}<script>followLog();</script>{% endblock %}

@@ -1,0 +1,16 @@
+services:
+  backupkrake:
+    build: .
+    image: backupkrake:latest
+    container_name: backupkrake
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      TZ: Europe/Berlin                # schedules and snapshot names use this timezone
+      BACKUPKRAKE_ADMIN_USER: admin
+      BACKUPKRAKE_ADMIN_PASSWORD: change-me   # if unset, a random one is generated (see container log)
+      BACKUPKRAKE_MAX_PARALLEL: "2"           # concurrent host backups
+    volumes:
+      - ./data:/data                   # snapshots: put this on your big disk
+      - ./config:/config               # database, SSH key, logs, restic cache

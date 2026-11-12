@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge %}
+{% block title %}{{ host.name }} · Backupkrake{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <div class="crumbs"><a href="/">Hosts</a> /</div>
+    <h1>{{ host.name }}</h1>
+    <div class="sub">{{ host.user }}@{{ host.address }}{% if host.port != 22 %}:{{ host.port }}{% endif %}
+      · {% if host.enabled and host.schedule %}<code>{{ host.schedule }}</code>, next {{ next|dt }}{% else %}manual only{% endif %}
+      {% if host.backup_window %} · window {{ host.backup_window }}{% endif %}
+      {% if host.bwlimit and host.bwlimit != '0' %} · max {{ host.bwlimit }}/s{% endif %}
+      · keep {{ host.keep_last }} last / {{ host.keep_daily }}d / {{ host.keep_weekly }}w / {{ host.keep_monthly }}m</div>
+  </div>
+  <div class="buttons">
+    <form method="post" action="/hosts/{{ host.id }}/backup"><button class="primary" {% if running %}disabled{% endif %}>{{ 'Running…' if running else 'Back up now' }}</button></form>
+    <form method="post" action="/hosts/{{ host.id }}/test"><button>Test connection</button></form>
+    <a class="button" href="/hosts/{{ host.id }}/edit">Edit</a>
+  </div>
+</div>
+
+<h2>Snapshots</h2>
+{% if snapshots %}
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Snapshot</th><th>Status</th><th>Files</th><th>Total size</th><th>Transferred</th><th>Duration</th><th></th></tr></thead>
+  <tbody>
+  {% for s in snapshots %}
+    <tr>
+      <td><a href="/hosts/{{ host.id }}/browse/{{ s.name }}"><strong>{{ s.name|snap }}</strong></a>{% if loop.first %} <span class="tag">latest</span>{% endif %}</td>
+      {% if s.run %}
+        <td><a href="/runs/{{ s.run.id }}">{{ badge(s.run.status) }}</a></td>
+        <td>{{ '{:,}'.format(s.run.stats.files) if s.run.stats.files is defined else '–' }}</td>
+        <td>{{ s.run.stats.total_size|bytes if s.run.stats.total_size is defined else '–' }}</td>
+        <td>{{ s.run.stats.transferred_size|bytes if s.run.stats.transferred_size is defined else '–' }}</td>
+        <td>{{ s.run|duration }}</td>
+      {% else %}
+        <td colspan="5" class="muted">no run record</td>
+      {% endif %}
+      <td class="actions">
+        <a class="button small" href="/hosts/{{ host.id }}/browse/{{ s.name }}">Browse</a>
+        <a class="button small" href="/hosts/{{ host.id }}/download/{{ s.name }}">.tar.gz</a>
+        <a class="button small" href="/hosts/{{ host.id }}/restore/{{ s.name }}">Restore…</a>
+        <form method="post" action="/hosts/{{ host.id }}/snapshots/{{ s.name }}/delete" data-confirm="Delete snapshot {{ s.name }}? This cannot be undone.">
+          <button class="small danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">No snapshots yet.</p>
+{% endif %}
+
+<h2>Recent runs</h2>
+{% include "_runs_table.html" %}
+
+<details class="card danger-zone">
+  <summary>Danger zone</summary>
+  <form method="post" action="/hosts/{{ host.id }}/forget-key" class="row">
+    <button>Forget SSH host key</button>
+    <span class="sub">Use this if the client was reinstalled and its host key changed.</span>
+  </form>
+  <form method="post" action="/hosts/{{ host.id }}/delete" class="row" data-confirm="Delete host {{ host.name }}?">
+    <button class="danger">Delete host</button>
+    <label class="inline"><input type="checkbox" name="delete_data" value="1"> also delete all {{ snapshots|length }} snapshots</label>
+  </form>
+</details>
+{% endblock %}

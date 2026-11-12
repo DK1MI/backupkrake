@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, run_kind %}
+{% block content %}
+<div class="pagehead">
+  <h1>Hosts</h1>
+  <a class="button primary" href="/hosts/new">Add host</a>
+</div>
+
+<section class="tiles">
+  {% set used_pct = (usage.used / usage.total * 100) if usage.total else 0 %}
+  <div class="tile">
+    <div class="label">Backup storage</div>
+    <div class="value">{{ usage.free|bytes }} free</div>
+    <div class="meter"><span style="width: {{ '%.1f'|format(used_pct) }}%" class="{{ 'warn' if used_pct > 85 else '' }}"></span></div>
+    <div class="sub">{{ usage.used|bytes }} of {{ usage.total|bytes }} used</div>
+  </div>
+  <div class="tile">
+    <div class="label">Offsite (restic)</div>
+    {% if not offsite_configured %}
+      <div class="value muted">not configured</div>
+      <div class="sub"><a href="/offsite">Configure →</a></div>
+    {% else %}
+      <div class="value">{% if last_offsite %}{{ badge(last_offsite.status) }}{% else %}<span class="muted">never run</span>{% endif %}</div>
+      <div class="sub">
+        {% if last_offsite %}last {{ last_offsite.started|dt }} · {% endif %}
+        {% if offsite.enabled and next_offsite %}next {{ next_offsite|dt }}{% else %}schedule off{% endif %}
+      </div>
+    {% endif %}
+  </div>
+  <div class="tile">
+    <div class="label">Active jobs</div>
+    <div class="value">{{ active|length }}</div>
+    <div class="sub">
+      {% for r in active %}<a href="/runs/{{ r.id }}">{{ run_kind(r) }}</a>{% if not loop.last %}, {% endif %}{% else %}idle{% endfor %}
+    </div>
+  </div>
+</section>
+
+{% if hosts %}
+<div class="tablewrap">
+<table>
+  <thead>
+    <tr><th>Host</th><th>Last run</th><th>Last good backup</th><th>Snapshots</th><th>Next run</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for h in hosts %}
+    <tr>
+      <td>
+        <a href="/hosts/{{ h.id }}"><strong>{{ h.name }}</strong></a>
+        <div class="sub">{{ h.user }}@{{ h.address }}{% if h.port != 22 %}:{{ h.port }}{% endif %}{% if not h.enabled %} · <em>disabled</em>{% endif %}{% if h.backup_window %} · {{ h.backup_window }}{% endif %}</div>
+      </td>
+      <td>
+        {% if h.last %}<a href="/runs/{{ h.last.id }}">{{ badge(h.last.status) }}</a>
+        <div class="sub">{{ h.last.started|dt }}</div>{% else %}<span class="muted">never</span>{% endif %}
+      </td>
+      <td>{% if h.last_ok %}{{ h.last_ok.started|dt }}{% else %}<span class="muted">–</span>{% endif %}
+        {% if h.overdue %}<div><span class="badge failed" title="No successful backup for more than {{ '%g'|format(h.max_age) }} day(s)">overdue</span></div>{% endif %}</td>
+      <td>{{ h.snap_count }}</td>
+      <td>{% if h.next %}{{ h.next|dt }}{% else %}<span class="muted">manual</span>{% endif %}</td>
+      <td class="actions">
+        <form method="post" action="/hosts/{{ h.id }}/backup"><button>Back up now</button></form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty card">
+  <p><strong>No hosts yet.</strong></p>
+  <p>First put the server's SSH key on a client (see <a href="/setup">Setup</a>), then <a href="/hosts/new">add the host</a>.</p>
+</div>
+{% endif %}
+{% endblock %}

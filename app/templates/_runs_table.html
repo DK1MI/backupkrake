@@ -1,0 +1,23 @@
+{% from "_macros.html" import badge, run_kind %}
+{% if runs %}
+<div class="tablewrap">
+<table>
+  <thead><tr><th>#</th><th>Job</th><th>Status</th><th>Started</th><th>Duration</th><th>Trigger</th><th>Summary</th></tr></thead>
+  <tbody>
+  {% for r in runs %}
+    <tr>
+      <td><a href="/runs/{{ r.id }}">{{ r.id }}</a></td>
+      <td>{{ run_kind(r) }}</td>
+      <td><a href="/runs/{{ r.id }}">{{ badge(r.status) }}</a></td>
+      <td>{{ r.started|dt }}</td>
+      <td>{{ r|duration }}</td>
+      <td>{{ r.trigger }}</td>
+      <td class="summary">{{ r.summary }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<p class="muted">No runs yet.</p>
+{% endif %}
