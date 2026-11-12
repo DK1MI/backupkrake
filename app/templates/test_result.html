@@ -6,7 +6,7 @@
 {% if ok %}
 <div class="flash success">Connected to {{ host.user }}@{{ host.address }} and listed <code>{{ 'the home folder' if host.scope == 'home' else '/' }}</code> with rsync. Backups should work.</div>
 {% else %}
-<div class="flash error">Connection failed.</div>
+<div class="flash error">Connection failed{% if hint %}: {{ hint }}{% endif %}.</div>
 <div class="card">
   <p><strong>Common causes</strong></p>
   <ul>

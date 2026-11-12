@@ -400,6 +400,7 @@ async def host_test(request: Request, host_id: int):
         backup.test_connection(host), restore.test_access(host)
     )
     return render(request, "test_result.html", host=host, ok=ok, output=output,
+                  hint=None if ok else backup.rsync_hint(output),
                   restore_ok=restore_ok, restore_output=restore_output,
                   restore_line=sshkeys.restore_authorized_keys_line(host.get("scope", "system")),
                   backup_line=sshkeys.authorized_keys_line(scope=host.get("scope", "system")))

@@ -186,6 +186,26 @@ _STAT_KEYS = {
 }
 
 
+_HINTS = [
+    (("ACLs are not supported", "extended attributes are not supported", "xattrs are not supported"),
+     "the client's rsync doesn't support ACLs/extended attributes: untick "
+     "“Preserve ACLs and extended attributes” in the host settings"),
+    (("rrsync: not found", "rrsync: command not found"),
+     "rrsync is not installed on the client (see Setup)"),
+    (("do not use .. in arg",),
+     "a path contains “..”, which the rrsync-restricted key refuses"),
+]
+
+
+def rsync_hint(output: list[str] | str) -> str | None:
+    """Translate well-known rsync/rrsync errors into an actionable sentence."""
+    text = output if isinstance(output, str) else "\n".join(output)
+    for needles, hint in _HINTS:
+        if any(n in text for n in needles):
+            return hint
+    return None
+
+
 def parse_stats(output: list[str]) -> dict:
     stats = {}
     for line in output:
@@ -344,7 +364,9 @@ async def _transfer(
     stats = parse_stats(out)
 
     if rc != 0 and rc not in WARNING_CODES:
-        return "failed", [f"rsync exit code {rc} (partial data kept for resume)"], {"stats": stats}
+        hint = rsync_hint(out)
+        msg = f"rsync exit code {rc}: {hint}" if hint else f"rsync exit code {rc} (partial data kept for resume)"
+        return "failed", [msg], {"stats": stats}
 
     partial.rename(hdir / stamp)
     _update_latest(host["name"])
@@ -363,10 +385,11 @@ async def _transfer(
 
 async def test_connection(host: dict) -> tuple[bool, str]:
     """List the remote root directory; works with both rrsync-restricted and normal keys."""
-    argv = [
-        config.RSYNC_BIN, "--list-only", "-e", sshkeys.ssh_command_string(host),
-        sshkeys.remote_spec(host, "." if host.get("scope") == "home" else "/"),
-    ]
+    argv = [config.RSYNC_BIN, "--list-only", "-e", sshkeys.ssh_command_string(host)]
+    if host["acls_xattrs"]:
+        # Same options as the real backup, so an rsync without ACL/xattr support fails here too.
+        argv += ["-A", "-X"]
+    argv.append(sshkeys.remote_spec(host, "." if host.get("scope") == "home" else "/"))
     proc = await asyncio.create_subprocess_exec(
         *argv, stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,

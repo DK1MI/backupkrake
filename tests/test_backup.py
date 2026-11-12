@@ -141,3 +141,33 @@ def test_connection_test(client_tree, monkeypatch):
     monkeypatch.setenv("FAKESSH_FORCED", "false")
     ok, _ = run(backup.test_connection(host))
     assert not ok
+
+
+def test_client_rsync_without_acl_support(client_tree, tmp_path, monkeypatch):
+    """Like rsync on many BSDs: built without ACL support, refuses -A."""
+    fake = tmp_path / "noacl-rsync"
+    fake.write_text(f"""#!/bin/sh
+case "$SSH_ORIGINAL_COMMAND" in
+  *--server*" -"*A*) echo "rsync: ACLs are not supported on this server" >&2
+                     echo "rsync error: syntax or usage error (code 1) at main.c(1769) [server=3.2.6]" >&2
+                     exit 1 ;;
+esac
+exec rrsync -ro {client_tree}
+""")
+    fake.chmod(0o755)
+    monkeypatch.setenv("FAKESSH_FORCED", str(fake))
+    host = db.get_host(make_host("noacl", paths="/etc", excludes="", acls_xattrs=1))
+
+    # the connection test now uses the same options and explains the problem
+    ok, out = run(backup.test_connection(host))
+    assert not ok and "ACLs are not supported" in out
+    assert "untick" in backup.rsync_hint(out)
+
+    r = db.get_run(run(backup.run_backup(host["id"])))
+    assert r["status"] == "failed"
+    assert "untick “Preserve ACLs and extended attributes”" in r["summary"]
+
+    db.execute("UPDATE hosts SET acls_xattrs=0 WHERE id=?", (host["id"],))
+    host = db.get_host(host["id"])
+    assert run(backup.test_connection(host))[0]
+    assert db.get_run(run(backup.run_backup(host["id"])))["status"] == "success"
