@@ -18,16 +18,37 @@ class RestoreError(ValueError):
     pass
 
 
-def staging_dir(source_name: str, snap: str) -> str:
-    return f"{config.RESTORE_STAGING}/{source_name}-{snap}"
+HOME_STAGING = ".backupkrake-restore"  # inside the user's home on home-scope hosts
 
 
-def validate_dir(path: str) -> str:
+def is_home(host: dict) -> bool:
+    return host.get("scope") == "home"
+
+
+def staging_dir(source_name: str, snap: str, target: dict | None = None) -> str:
+    base = HOME_STAGING if target and is_home(target) else config.RESTORE_STAGING
+    return f"{base}/{source_name}-{snap}"
+
+
+def display_dir(target_dir: str, target: dict) -> str:
+    """Human-readable target: home-relative dirs are shown as ~/…"""
+    if not is_home(target):
+        return target_dir
+    return "~" if target_dir in (".", "") else f"~/{target_dir}"
+
+
+def validate_dir(path: str, target: dict | None = None) -> str:
     path = path.strip()
-    if not path.startswith("/"):
-        raise RestoreError("Target directory must be an absolute path")
     if any(c in path for c in "\n\r\t\0") or ".." in path.split("/"):
         raise RestoreError("Invalid target directory")
+    if target and is_home(target):
+        path = path.removeprefix("~/").removeprefix("./")
+        if path.startswith("/") or path.startswith("~"):
+            raise RestoreError("On a home-folder host the target directory is relative to the home folder, "
+                               "e.g. restore/old")
+        return path.rstrip("/") or "."
+    if not path.startswith("/"):
+        raise RestoreError("Target directory must be an absolute path")
     return path.rstrip("/") or "/"
 
 
@@ -42,17 +63,17 @@ def make_params(
     browse.resolve(root, "/".join(parts), allow_final_symlink=True)
     rel = "/".join(parts)
     if mode == "staging":
-        target_dir = staging_dir(source["name"], snap)
+        target_dir = staging_dir(source["name"], snap, target)
     elif mode == "original":
-        target_dir = "/"
+        target_dir = "." if is_home(target) else "/"
     else:
-        target_dir = validate_dir(custom_dir)
+        target_dir = validate_dir(custom_dir, target)
     if delete and not rel:
         raise RestoreError("“Delete extra files” is not allowed when restoring a whole snapshot")
     return {
         "source_host_id": source["id"], "source_host": source["name"], "snapshot": snap, "path": rel,
         "target_host_id": target["id"], "target_host": target["name"], "mode": mode,
-        "target_dir": target_dir, "delete": bool(delete), "keep_backups": bool(keep_backups),
+        "target_dir": target_dir, "target_display": display_dir(target_dir, target), "delete": bool(delete), "keep_backups": bool(keep_backups),
         "dry_run": bool(dry_run),
     }
 
@@ -68,7 +89,7 @@ def build_argv(params: dict, source: dict, target: dict, stamp: str) -> list[str
     if source["acls_xattrs"]:
         argv += ["-A", "-X"]
     argv += backup.bwlimit_args(target)
-    if params["target_dir"] != "/":
+    if params["target_dir"] not in ("/", "."):
         argv.append("--mkpath")
     if params["delete"]:
         argv.append("--delete")
@@ -87,7 +108,7 @@ def build_argv(params: dict, source: dict, target: dict, stamp: str) -> list[str
 def describe(params: dict) -> str:
     what = "/" + params["path"] if params["path"] else "entire snapshot"
     return (f"{what} from {params['source_host']} @ {params['snapshot']} -> "
-            f"{params['target_host']}:{params['target_dir']}")
+            f"{params['target_host']}:{params.get('target_display') or params['target_dir']}")
 
 
 async def run_restore(params: dict, trigger: str = "manual") -> int | None:
@@ -141,7 +162,7 @@ async def _do_restore(params: dict, source: dict, target: dict, ctx: runner.RunC
     if params["dry_run"]:
         summary = f"dry run: {changes} change(s)" + (f", {deletes} deletion(s)" if deletes else "") + ", nothing written"
     else:
-        summary = f"restored to {target['name']}:{params['target_dir']} ({changes} change(s)"
+        summary = f"restored to {target['name']}:{display_dir(params['target_dir'], target)} ({changes} change(s)"
         summary += f", {deletes} deleted)" if deletes else ")"
     ctx.finish(status, summary, stats=stats)
 
@@ -151,7 +172,7 @@ async def test_access(host: dict) -> tuple[bool, str]:
     with tempfile.TemporaryDirectory() as empty:
         argv = [
             config.RSYNC_BIN, "--dry-run", "-r", "-e", sshkeys.ssh_command_string(host, config.RESTORE_KEY),
-            empty + "/", sshkeys.remote_spec(host, "/var/tmp/"),
+            empty + "/", sshkeys.remote_spec(host, "./" if is_home(host) else "/var/tmp/"),
         ]
         proc = await asyncio.create_subprocess_exec(
             *argv, stdin=asyncio.subprocess.DEVNULL,

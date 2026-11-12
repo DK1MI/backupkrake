@@ -7,7 +7,7 @@
 
 <div class="card restore-source">
   <div class="label">Restoring</div>
-  <div class="value"><code>/{{ rel }}</code>{% if is_dir %} <span class="muted">(folder, including everything inside)</span>{% endif %}
+  <div class="value"><code>{{ '~/' if host.scope == 'home' else '/' }}{{ rel }}</code>{% if is_dir %} <span class="muted">(folder, including everything inside)</span>{% endif %}
     {% if not rel %}<strong class="danger"> (entire snapshot)</strong>{% endif %}</div>
   <div class="sub">from <strong>{{ host.name }}</strong>, snapshot {{ snap|snap }}</div>
 </div>
@@ -16,12 +16,13 @@
 <div class="flash error"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
 {% endif %}
 
-<form method="post" class="form" id="restore-form">
+{% set target_scope = (hosts|selectattr('id', 'equalto', form.target_host_id)|map(attribute='scope')|first) or 'system' %}
+<form method="post" class="form" id="restore-form" data-target="{{ target_scope }}">
   <fieldset class="card">
     <legend>Target</legend>
     <label>Host
       <select name="target_host_id">
-        {% for h in hosts %}<option value="{{ h.id }}" {% if h.id == form.target_host_id %}selected{% endif %}>{{ h.name }}{% if h.id == host.id %} (original host){% endif %}</option>{% endfor %}
+        {% for h in hosts %}<option value="{{ h.id }}" data-scope="{{ h.scope }}" {% if h.id == form.target_host_id %}selected{% endif %}>{{ h.name }}{% if h.scope == 'home' %} (home folder of {{ h.user }}){% endif %}{% if h.id == host.id %} (original host){% endif %}</option>{% endfor %}
       </select>
     </label>
 
@@ -29,17 +30,18 @@
       <label class="choice">
         <input type="radio" name="mode" value="staging" {% if form.mode == 'staging' %}checked{% endif %}>
         <span><strong>Staging directory</strong> <span class="tag">safe</span><br>
-        <small>Copied to <code>{{ staging }}/{{ rel }}</code> on the target. Nothing existing is touched; compare and move files yourself.</small></span>
+        <small>Copied to <code class="t-system">{{ staging }}/{{ rel }}</code><code class="t-home">~/{{ home_staging }}/{{ rel }}</code> on the target. Nothing existing is touched; compare and move files yourself.</small></span>
       </label>
       <label class="choice">
         <input type="radio" name="mode" value="original" {% if form.mode == 'original' %}checked{% endif %}>
         <span><strong>Original location</strong><br>
-        <small>Written back to <code>/{{ rel }}</code>, overwriting the current files.</small></span>
+        <small>Written back to <code class="t-system">/{{ rel }}</code><code class="t-home">~/{{ rel }}</code>, overwriting the current files.</small></span>
       </label>
       <label class="choice">
         <input type="radio" name="mode" value="custom" {% if form.mode == 'custom' %}checked{% endif %}>
         <span><strong>Other directory</strong><br>
-        <small>The path is recreated below this directory, e.g. <code>/srv/restore/{{ rel or '…' }}</code>.</small>
+        <small>The path is recreated below this directory, e.g. <code class="t-system">/srv/restore/{{ rel or '…' }}</code><code class="t-home">~/restore/{{ rel or '…' }}</code>.
+          <span class="t-home">On a home-folder host, enter a path relative to the home folder.</span></small>
         <input name="custom_dir" value="{{ form.custom_dir }}" placeholder="/srv/restore"></span>
       </label>
     </div>
@@ -69,7 +71,21 @@
 
 <details class="card hint">
   <summary>Requires the restore key on the target host</summary>
-  <p>Add this line to <code>/root/.ssh/authorized_keys</code> on every host you want to restore to. It can only write files, never read them.</p>
-  <pre class="copy">{{ restore_line }}</pre>
+  <p>Add it on every host you want to restore to. It can only write files, never read them.</p>
+  <p class="t-system">Whole-system hosts, in <code>/root/.ssh/authorized_keys</code>:</p>
+  <pre class="copy t-system">{{ restore_lines.system }}</pre>
+  <p class="t-home">Home-folder hosts, in that user's <code>~/.ssh/authorized_keys</code>:</p>
+  <pre class="copy t-home">{{ restore_lines.home }}</pre>
 </details>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const form = document.getElementById("restore-form");
+  const sel = form.elements["target_host_id"];
+  const sync = () => { form.dataset.target = sel.selectedOptions[0].dataset.scope || "system"; };
+  sel.addEventListener("change", sync);
+  sync();
+})();
+</script>
 {% endblock %}

@@ -6,7 +6,7 @@
   <div>
     <div class="crumbs"><a href="/">Hosts</a> /</div>
     <h1>{{ host.name }}</h1>
-    <div class="sub">{{ host.user }}@{{ host.address }}{% if host.port != 22 %}:{{ host.port }}{% endif %}
+    <div class="sub">{% if host.scope == 'home' %}<span class="tag">home folder</span> {% endif %}{{ host.user }}@{{ host.address }}{% if host.port != 22 %}:{{ host.port }}{% endif %}
       · {% if host.enabled and host.schedule %}<code>{{ host.schedule }}</code>, next {{ next|dt }}{% else %}manual only{% endif %}
       {% if host.backup_window %} · window {{ host.backup_window }}{% endif %}
       {% if host.bwlimit and host.bwlimit != '0' %} · max {{ host.bwlimit }}/s{% endif %}

@@ -21,7 +21,7 @@
   <div class="label">{{ 'Restore preview (dry run, nothing was written)' if restore.dry_run else 'Restore' }}</div>
   <div class="value"><code>/{{ restore.path }}</code>{% if not restore.path %} <strong>(entire snapshot)</strong>{% endif %}
     from <a href="/hosts/{{ restore.source_host_id }}/browse/{{ restore.snapshot }}?path={{ restore.path|urlencode }}">{{ restore.source_host }} @ {{ restore.snapshot|snap }}</a></div>
-  <div class="sub">to <strong>{{ restore.target_host }}:{{ restore.target_dir }}</strong>
+  <div class="sub">to <strong>{{ restore.target_host }}:{{ restore.target_display or restore.target_dir }}</strong>
     · {{ {'staging': 'staging directory', 'original': 'original location', 'custom': 'custom directory'}[restore.mode] }}
     {% if restore.delete %} · <strong>deletes extra files</strong>{% endif %}
     {% if restore.keep_backups %} · keeps copies of overwritten files{% endif %}</div>

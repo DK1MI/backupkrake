@@ -4,13 +4,18 @@
 <div class="crumbs"><a href="/">Hosts</a> / <a href="/hosts/{{ host.id }}">{{ host.name }}</a> /</div>
 <h1>Connection test</h1>
 {% if ok %}
-<div class="flash success">Connected to {{ host.user }}@{{ host.address }} and listed <code>/</code> with rsync. Backups should work.</div>
+<div class="flash success">Connected to {{ host.user }}@{{ host.address }} and listed <code>{{ 'the home folder' if host.scope == 'home' else '/' }}</code> with rsync. Backups should work.</div>
 {% else %}
 <div class="flash error">Connection failed.</div>
 <div class="card">
   <p><strong>Common causes</strong></p>
   <ul>
+    {% if host.scope == 'home' %}
+    <li><code>Permission denied (publickey)</code>: the server's key is not in <code>~/.ssh/authorized_keys</code> of <strong>{{ host.user }}</strong> on that host. It should contain:<pre class="copy">{{ backup_line }}</pre>Also check that <code>~/.ssh</code> is not writable by others (<code>chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys</code>), otherwise sshd ignores it.</li>
+    <li><code>rrsync: not found</code>: copy the rrsync script to e.g. <code>~/bin/rrsync</code> and use its full path in the key line, or use the plain key.</li>
+    {% else %}
     <li><code>Permission denied (publickey)</code>: the server's key is not in <code>/root/.ssh/authorized_keys</code> on the client (see <a href="/setup">Setup</a>), or <code>PermitRootLogin</code> is <code>no</code> (use <code>prohibit-password</code>).</li>
+    {% endif %}
     <li><code>rrsync: command not found</code>: install rsync ≥ 3.2.4 on the client, or point the forced command to the full rrsync path.</li>
     <li><code>rsync: command not found</code>: install rsync on the client.</li>
     <li><code>REMOTE HOST IDENTIFICATION HAS CHANGED</code>: the client was reinstalled; use “Forget SSH host key” on the host page.</li>
@@ -23,7 +28,7 @@
 {% if restore_ok %}
 <div class="flash success">The restore key is authorised: you can restore to this host from the web UI.</div>
 {% else %}
-<div class="flash">The restore key is not authorised on this host (optional). To restore from the web UI, add this line to <code>/root/.ssh/authorized_keys</code>:</div>
+<div class="flash">The restore key is not authorised on this host (optional). To restore from the web UI, add this line to <code>{{ '~/.ssh/authorized_keys' if host.scope == 'home' else '/root/.ssh/authorized_keys' }}</code>:</div>
 <pre class="copy">{{ restore_line }}</pre>
 <details><summary>Output</summary><pre class="log">{{ restore_output }}</pre></details>
 {% endif %}

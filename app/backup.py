@@ -365,7 +365,7 @@ async def test_connection(host: dict) -> tuple[bool, str]:
     """List the remote root directory; works with both rrsync-restricted and normal keys."""
     argv = [
         config.RSYNC_BIN, "--list-only", "-e", sshkeys.ssh_command_string(host),
-        sshkeys.remote_spec(host, "/"),
+        sshkeys.remote_spec(host, "." if host.get("scope") == "home" else "/"),
     ]
     proc = await asyncio.create_subprocess_exec(
         *argv, stdin=asyncio.subprocess.DEVNULL,

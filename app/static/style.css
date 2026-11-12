@@ -198,3 +198,9 @@ legend label.inline { font-weight: 600; }
 .inline-check { display: inline-flex; align-items: center; gap: .35rem; font-weight: 400; font-size: .82rem; color: var(--muted); }
 .with-unit { display: flex; align-items: center; gap: .5rem; font-weight: 400; }
 .with-unit input { max-width: 7rem; }
+
+/* host scope: show only the hints for the selected kind of host */
+form:has(input[name=scope][value=system]:checked) .scope-home,
+form:has(input[name=scope][value=home]:checked) .scope-system { display: none; }
+code.copyable { word-break: break-all; }
+#restore-form[data-target=home] .t-system, #restore-form:not([data-target=home]) .t-home { display: none; }

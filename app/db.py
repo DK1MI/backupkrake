@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS hosts (
     address         TEXT NOT NULL,
     port            INTEGER NOT NULL DEFAULT 22,
     user            TEXT NOT NULL DEFAULT 'root',
+    scope           TEXT NOT NULL DEFAULT 'system', -- system (root, absolute paths) | home (paths relative to the user's home)
     paths           TEXT NOT NULL,
     excludes        TEXT NOT NULL DEFAULT '',
     schedule        TEXT NOT NULL DEFAULT '',
@@ -53,7 +54,7 @@ CREATE TABLE IF NOT EXISTS settings (
 """
 
 HOST_FIELDS = [
-    "name", "address", "port", "user", "paths", "excludes", "schedule", "enabled",
+    "name", "address", "port", "user", "scope", "paths", "excludes", "schedule", "enabled",
     "one_file_system", "acls_xattrs", "pre_cmd", "post_cmd", "extra_args",
     "keep_last", "keep_daily", "keep_weekly", "keep_monthly", "max_age_days",
     "bwlimit", "backup_window",
@@ -64,6 +65,7 @@ MIGRATIONS = [
     ("hosts", "max_age_days", "INTEGER"),
     ("hosts", "bwlimit", "TEXT NOT NULL DEFAULT ''"),
     ("hosts", "backup_window", "TEXT NOT NULL DEFAULT ''"),
+    ("hosts", "scope", "TEXT NOT NULL DEFAULT 'system'"),
 ]
 
 _conn: sqlite3.Connection | None = None

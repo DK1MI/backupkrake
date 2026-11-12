@@ -37,6 +37,20 @@ apk add rsync rrsync python3</pre>
 </div>
 
 <div class="card">
+  <h2>Hosts where you aren't root (home folder only)</h2>
+  <p>On a shared Unix system you can back up just your own home folder. When adding the host, choose <strong>Home folder only</strong> and enter your username. Then add this line to <em>your</em> <code>~/.ssh/authorized_keys</code> on that system:</p>
+  <pre class="copy">{{ home_backup_line }}</pre>
+  <p class="sub"><code>.</code> means your home folder, because ssh starts forced commands there, so the key can only read inside it. For restores from the web UI, also add:</p>
+  <pre class="copy">{{ home_restore_line }}</pre>
+  <ul class="sub">
+    <li>Paths are relative to your home folder: <code>.</code> is all of it, <code>Documents</code> just that folder.</li>
+    <li>No <code>rrsync</code> on that system? Copy the script to e.g. <code>~/bin/rrsync</code> (it needs <code>python3</code>) and write the full path in <code>command="…"</code>. Without Python, use the plain key: <code>{{ pubkey }}</code>. It then has the same rights as your account.</li>
+    <li>Restores go to <code>~/.backupkrake-restore/…</code> by default, inside your home folder, so other users can't see them.</li>
+    <li>Respect the system's usage policy; a backup window and bandwidth limit keep the load low.</li>
+  </ul>
+</div>
+
+<div class="card">
   <h2>3. Allow key-based root login</h2>
   <p>In <code>/etc/ssh/sshd_config</code> on the client:</p>
   <pre class="copy">PermitRootLogin prohibit-password</pre>

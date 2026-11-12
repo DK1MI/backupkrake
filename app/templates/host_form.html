@@ -9,7 +9,24 @@
 <div class="flash error"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
 {% endif %}
 
-<form method="post" class="form">
+<form method="post" class="form" id="host-form">
+  <fieldset class="card">
+    <legend>What kind of host?</legend>
+    <div class="choices">
+      <label class="choice">
+        <input type="radio" name="scope" value="system" {% if host.scope != 'home' %}checked{% endif %}>
+        <span><strong>Whole system</strong><br>
+        <small>Connect as <code>root</code> and back up system paths like <code>/etc</code> and <code>/home</code>. For your own servers.</small></span>
+      </label>
+      <label class="choice">
+        <input type="radio" name="scope" value="home" {% if host.scope == 'home' %}checked{% endif %}>
+        <span><strong>Home folder only</strong><br>
+        <small>Connect as a normal user and back up that user's home folder, e.g. on a shared Unix system where you aren't root.</small></span>
+      </label>
+    </div>
+    {% if not is_new %}<p class="note">Changing this later makes the next backup a full copy (the snapshot layout changes).</p>{% endif %}
+  </fieldset>
+
   <fieldset class="card">
     <legend>Connection</legend>
     <div class="grid">
@@ -20,23 +37,34 @@
       <label>Address
         <input name="address" value="{{ host.address }}" required placeholder="server.lan or 192.168.1.10">
       </label>
-      <label>SSH user <input name="user" value="{{ host.user }}" required></label>
+      <label>SSH user <input name="user" value="{{ host.user }}" required placeholder="your username on that host"></label>
       <label>SSH port <input name="port" type="number" min="1" max="65535" value="{{ host.port }}" required></label>
     </div>
-    <details class="hint">
+    <details class="hint scope-system">
       <summary>Client setup: add this line to <code>/root/.ssh/authorized_keys</code></summary>
-      <pre class="copy">{{ authorized_keys }}</pre>
+      <pre class="copy">{{ keys.system.backup }}</pre>
       <p>This restricts the key to read-only rsync. See <a href="/setup">Setup</a> for details and the unrestricted variant (needed for pre/post commands).</p>
+    </details>
+    <details class="hint scope-home" {% if is_new %}open{% endif %}>
+      <summary>Client setup: add this line to <code>~/.ssh/authorized_keys</code> of that user</summary>
+      <pre class="copy">{{ keys.home.backup }}</pre>
+      <p>The key can then only read files inside that user's home folder (<code>.</code> is the home folder, because ssh starts forced commands there). No root access is needed on the host.</p>
+      <p class="sub">No <code>rrsync</code> on that system? It's a small Python script: copy it to e.g. <code>~/bin/rrsync</code> and use the full path in <code>command="…"</code>. Without Python, use the plain key (<a href="/setup">Setup</a>); it then has the same rights as the account.</p>
+      <p class="sub">For restores to this host, also add: <code class="copyable">{{ keys.home.restore }}</code></p>
     </details>
   </fieldset>
 
   <fieldset class="card">
     <legend>What to back up</legend>
     <div class="grid two">
-      <label>Paths <small>one absolute path per line</small>
+      <label>Paths
+        <small class="scope-system">one absolute path per line</small>
+        <small class="scope-home">relative to the home folder, one per line; <code>.</code> = the whole home folder</small>
         <textarea name="paths" rows="8" required>{{ host.paths }}</textarea>
       </label>
-      <label>Excludes <small>rsync patterns, one per line; leading <code>/</code> anchors to the filesystem root</small>
+      <label>Excludes
+        <small class="scope-system">rsync patterns, one per line; leading <code>/</code> anchors to the filesystem root</small>
+        <small class="scope-home">rsync patterns, one per line; leading <code>/</code> anchors to the home folder, e.g. <code>/.cache/</code></small>
         <textarea name="excludes" rows="8">{{ host.excludes }}</textarea>
       </label>
     </div>
@@ -101,4 +129,23 @@
     <a class="button" href="{{ '/' if is_new else '/hosts/' ~ host.id }}">Cancel</a>
   </div>
 </form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Switching the host kind swaps in that kind's defaults, unless the fields were edited.
+(function () {
+  const presets = {{ presets|tojson }};
+  const form = document.getElementById("host-form");
+  const field = (n) => form.elements[n];
+  form.querySelectorAll("input[name=scope]").forEach((radio) => radio.addEventListener("change", () => {
+    const to = presets[radio.value], from = presets[radio.value === "home" ? "system" : "home"];
+    for (const name of ["user", "paths", "excludes"]) {
+      const el = field(name);
+      if (el.value.trim() === String(from[name]).trim() || el.value.trim() === "") el.value = to[name];
+    }
+    field("acls_xattrs").checked = !!to.acls_xattrs;
+  }));
+})();
+</script>
 {% endblock %}

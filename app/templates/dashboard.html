@@ -46,7 +46,7 @@
   {% for h in hosts %}
     <tr>
       <td>
-        <a href="/hosts/{{ h.id }}"><strong>{{ h.name }}</strong></a>
+        <a href="/hosts/{{ h.id }}"><strong>{{ h.name }}</strong></a>{% if h.scope == 'home' %} <span class="tag">home folder</span>{% endif %}
         <div class="sub">{{ h.user }}@{{ h.address }}{% if h.port != 22 %}:{{ h.port }}{% endif %}{% if not h.enabled %} · <em>disabled</em>{% endif %}{% if h.backup_window %} · {{ h.backup_window }}{% endif %}</div>
       </td>
       <td>

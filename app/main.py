@@ -219,7 +219,18 @@ DEFAULT_HOST = {
     "schedule": "0 2 * * *", "enabled": 1, "one_file_system": 0, "acls_xattrs": 1,
     "pre_cmd": "", "post_cmd": "", "extra_args": "",
     "keep_last": 3, "keep_daily": 7, "keep_weekly": 4, "keep_monthly": 12,
-    "max_age_days": None, "bwlimit": "", "backup_window": "",
+    "max_age_days": None, "bwlimit": "", "backup_window": "", "scope": "system",
+}
+
+# Non-root account on a shared system: paths are relative to the user's home folder.
+HOME_DEFAULTS = {
+    "user": "", "scope": "home", "acls_xattrs": 0,
+    "paths": ".",
+    "excludes": "/.cache/\n/.local/share/Trash/\n/.Trash/\n/.backupkrake-restore/\n*.swp",
+}
+SCOPE_PRESETS = {
+    "system": {k: DEFAULT_HOST[k] for k in ("user", "paths", "excludes", "acls_xattrs")},
+    "home": {k: HOME_DEFAULTS[k] for k in ("user", "paths", "excludes", "acls_xattrs")},
 }
 
 BWLIMIT_RE = re.compile(r"^\d+(\.\d+)?[KMGkmg]?$")
@@ -233,6 +244,7 @@ def parse_host_form(form) -> tuple[dict, list[str]]:
         data[f] = str(form.get(f, "")).replace("\r\n", "\n").strip()
     for f in ("enabled", "one_file_system", "acls_xattrs"):
         data[f] = 1 if form.get(f) else 0
+    data["scope"] = "home" if form.get("scope") == "home" else "system"
     for f, lo, hi in (("port", 1, 65535), ("keep_last", 1, 1000), ("keep_daily", 0, 1000),
                       ("keep_weekly", 0, 1000), ("keep_monthly", 0, 1000)):
         try:
@@ -261,8 +273,14 @@ def parse_host_form(form) -> tuple[dict, list[str]]:
     paths = backup.lines(data["paths"])
     if not paths:
         errors.append("At least one path is required")
-    elif any(not p.startswith("/") for p in paths):
+    elif data["scope"] == "system" and any(not p.startswith("/") for p in paths):
         errors.append("Paths must be absolute (start with /)")
+    elif data["scope"] == "home":
+        if any(p.startswith(("/", "~")) for p in paths):
+            errors.append("For a home folder host, paths are relative to the home folder "
+                          "(e.g. “.” for all of it, or “Documents”)")
+        elif any(".." in p.split("/") for p in paths):
+            errors.append("Paths may not contain “..”")
     if err := scheduler.validate_cron(data["schedule"]):
         errors.append(f"Schedule: {err}")
     if data["bwlimit"] and not BWLIMIT_RE.match(data["bwlimit"]):
@@ -283,10 +301,18 @@ def _window_warning(request: Request, host: dict) -> None:
                        f"e.g. at {outside[0]:%a %H:%M}. Those runs will be skipped.", "error")
 
 
+def _host_form(request: Request, host: dict, is_new: bool, errors: list[str]) -> HTMLResponse:
+    keys = {scope: {"backup": sshkeys.authorized_keys_line(scope=scope),
+                    "restore": sshkeys.restore_authorized_keys_line(scope)}
+            for scope in ("system", "home")}
+    return render(request, "host_form.html", host=host, is_new=is_new, errors=errors,
+                  keys=keys, presets=SCOPE_PRESETS)
+
+
 @app.get("/hosts/new", response_class=HTMLResponse)
-async def host_new(request: Request):
-    return render(request, "host_form.html", host=DEFAULT_HOST, is_new=True, errors=[],
-                  authorized_keys=sshkeys.authorized_keys_line())
+async def host_new(request: Request, scope: str = "system"):
+    host = {**DEFAULT_HOST, **(HOME_DEFAULTS if scope == "home" else {})}
+    return _host_form(request, host, True, [])
 
 
 @app.post("/hosts/new")
@@ -295,8 +321,7 @@ async def host_create(request: Request):
     if not errors and db.one("SELECT id FROM hosts WHERE name=?", (data["name"],)):
         errors.append("A host with this name already exists")
     if errors:
-        return render(request, "host_form.html", host=data, is_new=True, errors=errors,
-                      authorized_keys=sshkeys.authorized_keys_line())
+        return _host_form(request, data, True, errors)
     host_id = db.create_host(data)
     scheduler.sync_host(db.get_host(host_id))
     flash(request, f"Host {data['name']} added. Use “Test connection” to verify SSH access.")
@@ -319,8 +344,7 @@ async def host_detail(request: Request, host_id: int):
 @app.get("/hosts/{host_id}/edit", response_class=HTMLResponse)
 async def host_edit(request: Request, host_id: int):
     host = host_or_404(host_id)
-    return render(request, "host_form.html", host=host, is_new=False, errors=[],
-                  authorized_keys=sshkeys.authorized_keys_line())
+    return _host_form(request, host, False, [])
 
 
 @app.post("/hosts/{host_id}/edit")
@@ -330,8 +354,7 @@ async def host_update(request: Request, host_id: int):
     if data["name"] != old["name"]:
         errors.append("The name cannot be changed (it is the snapshot directory name)")
     if errors:
-        return render(request, "host_form.html", host={**data, "id": host_id}, is_new=False,
-                      errors=errors, authorized_keys=sshkeys.authorized_keys_line())
+        return _host_form(request, {**data, "id": host_id}, False, errors)
     db.update_host(host_id, data)
     if (old["address"], old["port"]) != (data["address"], data["port"]):
         sshkeys.forget_host_key(old)
@@ -378,7 +401,8 @@ async def host_test(request: Request, host_id: int):
     )
     return render(request, "test_result.html", host=host, ok=ok, output=output,
                   restore_ok=restore_ok, restore_output=restore_output,
-                  restore_line=sshkeys.restore_authorized_keys_line())
+                  restore_line=sshkeys.restore_authorized_keys_line(host.get("scope", "system")),
+                  backup_line=sshkeys.authorized_keys_line(scope=host.get("scope", "system")))
 
 
 @app.post("/hosts/{host_id}/forget-key")
@@ -472,7 +496,8 @@ def _restore_form(request: Request, host: dict, snap: str, rel: str, form: dict 
         request, "restore.html", host=host, snap=snap, rel="/".join(parts), parts=parts,
         is_dir=target.is_dir(), hosts=db.list_hosts(), form=form, errors=errors or [],
         staging=restore.staging_dir(host["name"], snap),
-        restore_line=sshkeys.restore_authorized_keys_line(),
+        home_staging=restore.staging_dir(host["name"], snap, {"scope": "home"}),
+        restore_lines={sc: sshkeys.restore_authorized_keys_line(sc) for sc in ("system", "home")},
     )
 
 
@@ -764,6 +789,8 @@ async def setup_page(request: Request):
         restricted=sshkeys.authorized_keys_line(restricted=True),
         restore_line=sshkeys.restore_authorized_keys_line(),
         restore_pubkey=sshkeys.restore_public_key(),
+        home_backup_line=sshkeys.authorized_keys_line(scope="home"),
+        home_restore_line=sshkeys.restore_authorized_keys_line("home"),
         staging=config.RESTORE_STAGING,
         data_dir=config.DATA_DIR,
     )

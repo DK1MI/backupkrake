@@ -5,6 +5,7 @@
 Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a web interface.
 
 - **Pull over SSH**: the server connects to each client as `root` and copies files with `rsync`. Clients need only `rsync` and the server's public key, no agent.
+- **Non-root hosts**: back up just your home folder on systems where you only have a normal account (e.g. shared Unix systems), with a key locked to that folder.
 - **Hardlinked snapshots**: every snapshot is a complete, browsable directory tree. Unchanged files are hardlinked to the previous snapshot, so each new snapshot only uses space for changed files.
 - **Backup windows & bandwidth limits**: per host, e.g. only between 22:00 and 06:00 at max 20 MiB/s; a backup still running when the window closes is stopped and resumes the next night.
 - **Retention**: keep the last N snapshots plus N daily, weekly and monthly ones, applied after every backup.
@@ -165,6 +166,25 @@ docker compose up -d --build
    ```
    It's a separate key that can only *write*, so the backup key never needs write access.
 5. Add the host in the UI and click **Test connection** (it checks both keys). The client's SSH host key is learned on first contact; a changed key will be rejected (use "Forget SSH host key" after a reinstall).
+
+### Hosts where you aren't root (home folder only)
+
+You can also back up just your own home folder on a system where you have a normal account, e.g. a shared Unix system or a university login. No root access is needed there.
+
+1. Add the host and choose **Home folder only**. Enter your username; paths are relative to your home folder (`.` = all of it, `Documents` = just that folder), and excludes are anchored at the home folder (e.g. `/.cache/`).
+2. On that system, add this line to **your** `~/.ssh/authorized_keys` (the exact line is shown in the form and on the Setup page):
+   ```
+   command="rrsync -ro .",restrict ssh-ed25519 AAAA... backupkrake
+   ```
+   `.` means your home folder, because ssh starts forced commands there, so the key can only read inside it. For restores, add the restore key with `rrsync -wo .` the same way.
+3. **Test connection**, then back up.
+
+Notes:
+- **No `rrsync` there?** Copy the script to e.g. `~/bin/rrsync` (it needs `python3`) and use its full path in `command="…"`.
+- **No Python either:** use the plain key line. Relative paths still resolve in your home folder; the key then has the same rights as your account.
+- **ACLs/xattrs** are off by default for these hosts, since many shared and non-Linux systems don't support them over rsync.
+- **Restores** go to `~/.backupkrake-restore/…` by default (inside your home, invisible to other users), to the original place in your home, or to any folder relative to it.
+- **Be a good neighbour:** respect the system's usage policy; a backup window and bandwidth limit keep the load low.
 
 ### Backup windows and bandwidth limits
 

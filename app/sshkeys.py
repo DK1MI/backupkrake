@@ -1,5 +1,9 @@
 """Server SSH key management and helpers for talking to clients.
 
+Hosts have a scope: "system" (log in as root, absolute paths) or "home" (log in as
+a normal user, paths relative to the home directory; works with `rrsync -ro .` as
+well as an unrestricted key, because both resolve relative paths against $HOME).
+
 Two keys are used so that clients can grant them different rights:
   * backup key  -> authorized as `rrsync -ro /` (read-only)
   * restore key -> authorized as `rrsync -wo /` (write-only), optional per client
@@ -38,15 +42,21 @@ def restore_public_key() -> str:
     return _pub(config.RESTORE_KEY)
 
 
-def authorized_keys_line(restricted: bool = True) -> str:
+def rrsync_root(scope: str = "system") -> str:
+    """Directory the forced command is locked to. ssh runs forced commands in the
+    user's home directory, so "." restricts a non-root key to that home folder."""
+    return "." if scope == "home" else "/"
+
+
+def authorized_keys_line(restricted: bool = True, scope: str = "system") -> str:
     key = public_key()
     if restricted:
-        return f'command="rrsync -ro /",restrict {key}'
+        return f'command="rrsync -ro {rrsync_root(scope)}",restrict {key}'
     return key
 
 
-def restore_authorized_keys_line() -> str:
-    return f'command="rrsync -wo /",restrict {restore_public_key()}'
+def restore_authorized_keys_line(scope: str = "system") -> str:
+    return f'command="rrsync -wo {rrsync_root(scope)}",restrict {restore_public_key()}'
 
 
 def ssh_options(host: dict, key: Path | None = None) -> list[str]:
