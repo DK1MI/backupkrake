@@ -228,7 +228,9 @@ DEFAULT_HOST = {
 HOME_DEFAULTS = {
     "user": "", "scope": "home", "acls_xattrs": 0,
     "paths": ".",
-    "excludes": "/.cache/\n/.local/share/Trash/\n/.Trash/\n/.backupkrake-restore/\n*.swp",
+    # Rootless podman/docker storage: image layers owned by sub-UIDs the user can't read, and re-pullable.
+    "excludes": "/.cache/\n/.local/share/Trash/\n/.Trash/\n/.backupkrake-restore/\n"
+                "/.local/share/containers/\n/.local/share/docker/\n*.swp",
 }
 SCOPE_PRESETS = {
     "system": {k: DEFAULT_HOST[k] for k in ("user", "paths", "excludes", "acls_xattrs")},

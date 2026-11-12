@@ -182,6 +182,7 @@ You can also back up just your own home folder on a system where you have a norm
 Notes:
 - **No `rrsync` there?** Copy the script to e.g. `~/bin/rrsync` (it needs `python3`) and use its full path in `command="…"`.
 - **No Python either:** use the plain key line. Relative paths still resolve in your home folder; the key then has the same rights as your account.
+- **Rootless containers:** Podman/Docker storage (`~/.local/share/containers/`, `~/.local/share/docker/`) is excluded by default. Its files belong to container sub-UIDs that your account can't read, and images can be pulled again. Back up important container volumes explicitly, e.g. with a pre-command `podman volume export`.
 - **ACLs/xattrs** are off by default for these hosts, since many shared and non-Linux systems don't support them over rsync.
 - **Restores** go to `~/.backupkrake-restore/…` by default (inside your home, invisible to other users), to the original place in your home, or to any folder relative to it.
 - **Be a good neighbour:** respect the system's usage policy; a backup window and bandwidth limit keep the load low.
