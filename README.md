@@ -13,36 +13,121 @@ Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a w
 - **Web UI**: manage hosts, cron schedules, live logs, run history and a snapshot browser with file and `.tar.gz` downloads.
 - **Encrypted offsite copy**: restic uploads the latest snapshot of every host to S3, B2, SFTP, a rest-server, etc., with its own retention policy and a restore option.
 
-## Run it
+## Deploy with Docker Compose
+
+Prebuilt images for **amd64 and arm64** (e.g. Raspberry Pi 4/5, ARM NAS) are published to `ghcr.io/dk1mi/backupkrake`. You don't need to clone this repository to run it.
+
+### 1. Create a directory and a compose file
 
 ```sh
-# edit docker-compose.yml: password, timezone, and where ./data should live
-docker compose pull && docker compose up -d      # prebuilt image (amd64 / arm64)
-# or build it yourself:
-docker compose up -d --build
+mkdir -p /opt/backupkrake && cd /opt/backupkrake
 ```
 
-Images are published to `ghcr.io/dk1mi/backupkrake`:
-- `latest` is the current `main`.
-- `1.2.3` and `1.2` come from `v1.2.3` git tags.
-- `sha-<commit>` tags exist for every build.
+Create `docker-compose.yml`:
 
-Open `http://<server>:8080` and log in as `admin` with the password you set. If you set no password, one is generated, printed to the container log, and stored in `config/initial_admin_password`.
+```yaml
+services:
+  backupkrake:
+    image: ghcr.io/dk1mi/backupkrake:0.1.0     # or :latest to follow main
+    container_name: backupkrake
+    restart: unless-stopped
+    ports:
+      - "8080:8080"                           # e.g. "192.168.1.5:8080:8080" to bind to one LAN address
+    environment:
+      TZ: Europe/Berlin                       # schedules and snapshot names use this timezone
+      BACKUPKRAKE_ADMIN_USER: admin
+      BACKUPKRAKE_ADMIN_PASSWORD: ${BACKUPKRAKE_ADMIN_PASSWORD:?set it in .env}
+      BACKUPKRAKE_MAX_PARALLEL: "2"           # host backups running at the same time
+    volumes:
+      - /srv/backups:/data                    # snapshots: point this at your big disk
+      - ./config:/config                      # database, SSH keys, logs, restic cache
+```
 
-| Volume    | Contents                                                     |
-|-----------|--------------------------------------------------------------|
-| `/data`   | `hosts/<name>/<YYYY-MM-DD_HHMMSS>/` snapshots, `restore/`    |
-| `/config` | SQLite DB, server SSH key, known_hosts, run logs, restic cache |
+Put the admin password in a `.env` file next to it, so it isn't in the compose file:
 
-Put `/data` on a filesystem that supports hardlinks (ext4, xfs, btrfs, zfs). Not NFS/SMB-mounted storage from another box.
-The container runs as root on purpose; that's required to store the clients' file ownership.
+```sh
+printf 'BACKUPKRAKE_ADMIN_PASSWORD=%s\n' "$(openssl rand -base64 18)" > .env
+chmod 600 .env
+cat .env      # note the password
+```
 
-| Environment variable   | Default | Meaning                                  |
-|------------------------|---------|------------------------------------------|
-| `BACKUPKRAKE_ADMIN_USER`      | `admin` | Web UI user                              |
-| `BACKUPKRAKE_ADMIN_PASSWORD`  | random  | Web UI password                          |
-| `BACKUPKRAKE_MAX_PARALLEL`    | `2`     | Host backups running at the same time    |
-| `TZ`                   | UTC     | Timezone for schedules and snapshot names |
+**Choosing the data location:**
+- The `/data` volume must be on a local filesystem that supports hardlinks: ext4, xfs, btrfs or zfs. NFS/SMB shares from another machine won't work.
+- Unchanged files are hardlinked between snapshots, so the space needed is roughly the size of all clients' data plus what changes within your retention period.
+
+### 2. Start it
+
+```sh
+docker compose pull
+docker compose up -d
+docker compose logs -f      # Ctrl+C to stop following
+```
+
+Open `http://<server>:8080` and log in as `admin` with the password from `.env`. On first start the server creates its SSH keys in `config/ssh/`; the **Setup** page shows the lines to put on your clients (see [Adding a client](#adding-a-client)).
+
+The container runs as root on purpose. Storing the clients' file ownership (uid/gid) requires it.
+
+### 3. Updating
+
+```sh
+cd /opt/backupkrake
+# when pinned: change the version in docker-compose.yml first, e.g. 0.1.0 -> 0.2.0
+docker compose pull
+docker compose up -d
+```
+
+Database changes are applied automatically on start. Running backups are interrupted by the restart; their partial data is kept and the next run resumes. To roll back, set the previous version and run `docker compose up -d` again.
+
+Available image tags:
+
+| Tag | Meaning |
+|-----|---------|
+| `0.1.0`, `0.1` | Released versions (from `v0.1.0` git tags). Recommended. |
+| `latest` | Current `main` branch |
+| `sha-<commit>` | A specific commit |
+
+### 4. Keep a copy of the config directory
+
+The offsite (restic) job uploads the **snapshots**, not `config/`. That directory holds:
+- the SSH keys your clients trust
+- the database (hosts, schedules, settings, including the restic password)
+
+If the server's disk dies, the snapshots can be restored from offsite with the restic password, but without a copy of `config/` you'd have to set up every host again. Keep a copy elsewhere, e.g. after setting things up and whenever you change hosts:
+
+```sh
+tar czf backupkrake-config-$(date +%F).tar.gz -C /opt/backupkrake config .env docker-compose.yml
+```
+
+Store the restic password separately as well (password manager): without it the offsite data can't be decrypted.
+
+### Network access
+
+- The web UI is plain HTTP with a single admin login, which is fine on a home LAN. Don't forward port 8080 to the internet.
+- For remote access, use a VPN (WireGuard, Tailscale), or a reverse proxy with HTTPS and extra authentication in front of it.
+
+### Configuration reference
+
+| Environment variable | Default | Meaning |
+|---|---|---|
+| `BACKUPKRAKE_ADMIN_USER` | `admin` | Web UI user |
+| `BACKUPKRAKE_ADMIN_PASSWORD` | random | Web UI password. If unset, one is generated, printed to the log and stored in `config/initial_admin_password` |
+| `BACKUPKRAKE_MAX_PARALLEL` | `2` | Host backups running at the same time |
+| `TZ` | UTC | Timezone for schedules, backup windows and snapshot names |
+
+| Volume | Contents |
+|---|---|
+| `/data` | `hosts/<name>/<YYYY-MM-DD_HHMMSS>/` snapshots, `restore/` (offsite restores) |
+| `/config` | SQLite database, SSH keys, known_hosts, run logs, restic cache |
+
+### Building the image yourself
+
+The `docker-compose.yml` in this repository can also build from source:
+
+```sh
+git clone https://github.com/DK1MI/backupkrake.git && cd backupkrake
+# edit docker-compose.yml (password, timezone, data path)
+docker compose up -d --build
+```
 
 ## Adding a client
 
