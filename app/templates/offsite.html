@@ -4,7 +4,7 @@
 <div class="pagehead">
   <div>
     <h1>Offsite backup</h1>
-    <div class="sub">Uploads the latest snapshot of every host, encrypted with restic.
+    <div class="sub">Uploads the latest snapshot of every host{% if s.include_config %} and Backupkrake's configuration{% endif %}, encrypted with restic.
       {% if s.enabled and next %}Next run {{ next|dt }}.{% endif %}</div>
   </div>
   {% if configured %}
@@ -48,6 +48,9 @@
       <label>Keep monthly <input type="number" min="0" name="keep_monthly" value="{{ s.keep_monthly }}"></label>
       <label>Keep yearly <input type="number" min="0" name="keep_yearly" value="{{ s.keep_yearly }}"></label>
     </div>
+    <label class="inline"><input type="checkbox" name="include_config" value="1" {% if s.include_config %}checked{% endif %}>
+      Also upload Backupkrake's own configuration (database, SSH keys, settings, logs)</label>
+    <small>Recommended. With it, a lost server can be rebuilt completely from the offsite copy; see the README.</small>
     <label>Upload limit (KiB/s, 0 = unlimited) <input type="number" min="0" name="limit_upload" value="{{ s.limit_upload }}"></label>
   </fieldset>
 

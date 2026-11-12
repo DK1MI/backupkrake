@@ -2,6 +2,10 @@
 import asyncio
 import json
 import os
+import shutil
+import sqlite3
+import tempfile
+from pathlib import Path
 
 from . import backup, config, db, runner
 
@@ -16,7 +20,14 @@ DEFAULTS = {
     "keep_monthly": 12,
     "keep_yearly": 3,
     "limit_upload": 0,      # KiB/s, 0 = unlimited
+    "include_config": True, # also upload Backupkrake's own /config (keys, database)
 }
+
+# restic "host" for the configuration snapshot. Host names must start with a letter
+# or digit, so this can never collide with a real host.
+CONFIG_HOST = "_backupkrake-config"
+# Not needed for a restore (rebuildable cache / live DB files replaced by a consistent copy).
+_CONFIG_SKIP = {"restic-cache", "backupkrake.db", "backupkrake.db-wal", "backupkrake.db-shm"}
 
 _lock = asyncio.Lock()
 TAG = "backupkrake"
@@ -147,12 +158,18 @@ async def _do_offsite(ctx: runner.RunContext) -> None:
         # 3 = snapshot created but some files could not be read
         (ok if rc in (0, 3) else failed).append(host["name"])
 
+    config_ok = None
+    if s.get("include_config", True):
+        config_ok = await _upload_config(ctx, s, env)
+        if not config_ok:
+            failed.append("config")
+
     policy = [
         f"--keep-{k}={int(s[f'keep_{k}'])}"
         for k in ("daily", "weekly", "monthly", "yearly")
         if int(s.get(f"keep_{k}") or 0) > 0
     ]
-    if policy and ok:
+    if policy and (ok or config_ok):
         ctx.log("--- applying offsite retention")
         rc, _ = await ctx.exec(
             [config.RESTIC_BIN, "forget", "--tag", TAG, "--group-by", "host", "--prune"] + policy, env=env
@@ -160,13 +177,54 @@ async def _do_offsite(ctx: runner.RunContext) -> None:
         if rc != 0:
             failed.append("forget/prune")
 
-    summary = f"{len(ok)} host(s) uploaded"
+    summary = f"{len(ok)} host(s)" + (" + config" if config_ok else "") + " uploaded"
     if failed:
-        ctx.finish("failed" if not ok else "warning", summary + f"; failed: {', '.join(failed)}")
-    elif not ok:
+        ctx.finish("failed" if not (ok or config_ok) else "warning", summary + f"; failed: {', '.join(failed)}")
+    elif not (ok or config_ok):
         ctx.finish("warning", "nothing to upload")
     else:
         ctx.finish("success", summary)
+
+
+def export_config(dest: Path) -> list[str]:
+    """Copy /config into ``dest`` for upload: a consistent database copy plus keys,
+    settings and logs, without the restic cache. Returns the top-level names exported."""
+    for entry in sorted(config.CONFIG_DIR.iterdir()):
+        if entry.name in _CONFIG_SKIP:
+            continue
+        target = dest / entry.name
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.copytree(entry, target, symlinks=True)
+        else:
+            shutil.copy2(entry, target, follow_symlinks=False)
+    # SQLite's online backup API gives a consistent copy even while the app writes.
+    src = sqlite3.connect(config.DB_PATH)
+    dst = sqlite3.connect(dest / config.DB_PATH.name)
+    try:
+        src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
+    (dest / config.DB_PATH.name).chmod(0o600)
+    return sorted(p.name for p in dest.iterdir())
+
+
+async def _upload_config(ctx: runner.RunContext, s: dict, env: dict) -> bool:
+    ctx.log("--- configuration: uploading /config (database, SSH keys, settings, logs)")
+    with tempfile.TemporaryDirectory(prefix="backupkrake-config-") as tmp:
+        try:
+            names = await asyncio.to_thread(export_config, Path(tmp))
+        except Exception as e:  # noqa: BLE001
+            ctx.log(f"could not export configuration: {e}")
+            return False
+        ctx.log(f"exported: {', '.join(names)}")
+        argv = _base(s) + ["backup", ".", "--host", CONFIG_HOST, "--tag", TAG, "--tag", "config",
+                           "--ignore-ctime", "--ignore-inode"]
+        parent = await _parent_for(CONFIG_HOST, env)
+        if parent:
+            argv += ["--parent", parent]
+        rc, _ = await ctx.exec(argv, cwd=tmp, env=env)
+    return rc in (0, 3)
 
 
 async def run_simple(kind: str, args: list[str]) -> int | None:

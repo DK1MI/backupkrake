@@ -86,19 +86,40 @@ Available image tags:
 | `latest` | Current `main` branch |
 | `sha-<commit>` | A specific commit |
 
-### 4. Keep a copy of the config directory
+### 4. Disaster recovery
 
-The offsite (restic) job uploads the **snapshots**, not `config/`. That directory holds:
+`config/` holds what makes this installation work:
 - the SSH keys your clients trust
-- the database (hosts, schedules, settings, including the restic password)
+- the database: hosts, schedules, settings, and the offsite repository and password
 
-If the server's disk dies, the snapshots can be restored from offsite with the restic password, but without a copy of `config/` you'd have to set up every host again. Keep a copy elsewhere, e.g. after setting things up and whenever you change hosts:
+With **Offsite → "Also upload Backupkrake's own configuration"** (on by default), every offsite run also uploads a consistent copy of it as a separate restic snapshot. It shows up as *Backupkrake configuration* in the offsite snapshot list.
+
+**Keep the restic repository URL, its password and any backend credentials outside this server** (e.g. in a password manager). They are stored in the database, but you need them to get the database back.
+
+If the server is lost, on the new machine:
+
+```sh
+mkdir -p /opt/backupkrake && cd /opt/backupkrake
+# 1. recreate docker-compose.yml and .env as in step 1 (a new admin password is fine)
+
+# 2. restore the configuration with the restic inside the image
+docker run --rm \
+  -e RESTIC_REPOSITORY='s3:https://…/bucket/backupkrake' -e RESTIC_PASSWORD='…' \
+  -e AWS_ACCESS_KEY_ID='…' -e AWS_SECRET_ACCESS_KEY='…' \
+  -v "$PWD/config:/restore" --entrypoint restic ghcr.io/dk1mi/backupkrake:0.1.0 \
+  restore latest --host _backupkrake-config --target /restore
+
+# 3. start: hosts, schedules, keys and settings are back
+docker compose up -d
+```
+
+The clients still trust the restored SSH keys, so the next scheduled backups simply run. The first one copies everything again, because the local snapshot history is gone. To get files back that only exist offsite, use **Offsite → Offsite snapshots → Restore to server**, or `restic restore <id> --target …` as above.
+
+If you don't use offsite backups, keep a copy of `config/` some other way:
 
 ```sh
 tar czf backupkrake-config-$(date +%F).tar.gz -C /opt/backupkrake config .env docker-compose.yml
 ```
-
-Store the restic password separately as well (password manager): without it the offsite data can't be decrypted.
 
 ### Network access
 
@@ -182,6 +203,8 @@ Configured paths that don't exist on a client (e.g. `/srv`) are skipped and note
 On the **Offsite** page set the repository (e.g. `s3:https://…/bucket/path`, `b2:bucket:path`, `sftp:user@host:/path`), password and any credentials as environment lines. Click **Initialise repository** once, then **Run now** or enable the schedule. Schedule it after your host backups usually finish.
 
 Only the latest local snapshot of each host is uploaded; restic keeps its own history (deduplicated). Each restic snapshot is tagged with its local snapshot name.
+
+Unless disabled, each run also uploads Backupkrake's own configuration: a consistent copy of the database, the SSH keys, settings and logs, without the restic cache. It is stored under the restic host name `_backupkrake-config`, with the same retention. See [Disaster recovery](#4-disaster-recovery).
 
 **Store the restic password somewhere other than this server.**
 

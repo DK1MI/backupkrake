@@ -16,8 +16,13 @@
   {% for s in snaps %}
     <tr>
       <td><code>{{ s.short_id or s.id[:8] }}</code></td>
+      {% if s.hostname == config_host %}
+      <td><em>Backupkrake configuration</em></td>
+      <td class="muted">database, SSH keys</td>
+      {% else %}
       <td>{{ s.hostname }}</td>
       <td>{{ s.local_snapshot|snap }}</td>
+      {% endif %}
       <td>{{ (s.summary.backup_end if s.summary is defined and s.summary else s.time)[:16]|replace('T', ' ') }}</td>
       <td>{{ s.summary.total_bytes_processed|bytes if s.summary is defined and s.summary else '–' }}</td>
       <td class="actions">

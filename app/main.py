@@ -596,6 +596,7 @@ async def offsite_save(request: Request):
     s = offsite.get_settings()
     errors = []
     s["enabled"] = bool(form.get("enabled"))
+    s["include_config"] = bool(form.get("include_config"))
     s["repository"] = str(form.get("repository", "")).strip()
     new_pw = str(form.get("password", ""))
     if new_pw:
@@ -662,7 +663,7 @@ async def offsite_snapshots(request: Request):
         except Exception as e:  # noqa: BLE001
             error = str(e)
     return render(request, "offsite_snapshots.html", snaps=snaps, error=error,
-                  restore_dir=config.RESTORE_DIR)
+                  restore_dir=config.RESTORE_DIR, config_host=offsite.CONFIG_HOST)
 
 
 @app.post("/offsite/restore/{snap_id}")
