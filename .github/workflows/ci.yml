@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"  # same as the Docker image
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install rsync and restic
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q rsync restic
+          # rrsync ships in /usr/bin since rsync 3.2.4 packaging; fall back to the doc copy
+          if ! command -v rrsync >/dev/null; then
+            src=$(ls /usr/share/doc/rsync/scripts/rrsync* | head -1)
+            case "$src" in *.gz) zcat "$src" ;; *) cat "$src" ;; esac | sudo tee /usr/local/bin/rrsync >/dev/null
+            sudo chmod +x /usr/local/bin/rrsync
+          fi
+          rsync --version | head -1; restic version; command -v rrsync
+
+      - name: Install Python dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: python -m pytest -v
+
+  docker:
+    name: Docker image
+    needs: test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Image name (registry names must be lowercase)
+        run: echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      # Build for the runner's architecture first and make sure the container starts.
+      - name: Build for smoke test
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: backupkrake:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        run: |
+          docker run -d --name bk -p 8080:8080 -e BACKUPKRAKE_ADMIN_PASSWORD=ci backupkrake:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8080/healthz; then echo; break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8080/healthz
+          # login page renders, and the tools the app shells out to are present
+          curl -fsS http://127.0.0.1:8080/login | grep -q "Backupkrake"
+          docker exec bk sh -c 'rsync --version | head -1 && restic version && ssh -V && ls /config/ssh'
+          docker logs bk
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push (amd64 + arm64)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

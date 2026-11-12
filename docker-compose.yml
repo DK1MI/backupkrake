@@ -1,7 +1,7 @@
 services:
   backupkrake:
-    build: .
-    image: backupkrake:latest
+    image: ghcr.io/dk1mi/backupkrake:latest   # prebuilt for amd64 and arm64
+    build: .                                  # or build locally: docker compose up -d --build
     container_name: backupkrake
     restart: unless-stopped
     ports:

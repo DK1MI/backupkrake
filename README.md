@@ -1,5 +1,7 @@
 # Backupkrake
 
+[![CI](https://github.com/DK1MI/backupkrake/actions/workflows/ci.yml/badge.svg)](https://github.com/DK1MI/backupkrake/actions/workflows/ci.yml)
+
 Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a web interface.
 
 - **Pull over SSH**: the server connects to each client as `root` and copies files with `rsync`. Clients need only `rsync` and the server's public key, no agent.
@@ -15,8 +17,15 @@ Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a w
 
 ```sh
 # edit docker-compose.yml: password, timezone, and where ./data should live
+docker compose pull && docker compose up -d      # prebuilt image (amd64 / arm64)
+# or build it yourself:
 docker compose up -d --build
 ```
+
+Images are published to `ghcr.io/dk1mi/backupkrake`:
+- `latest` is the current `main`.
+- `1.2.3` and `1.2` come from `v1.2.3` git tags.
+- `sha-<commit>` tags exist for every build.
 
 Open `http://<server>:8080` and log in as `admin` with the password you set. If you set no password, one is generated, printed to the container log, and stored in `config/initial_admin_password`.
 
@@ -117,10 +126,12 @@ Messages include the run summary and the last log lines. If you set the *Backupk
 ## Development
 
 ```sh
-python -m venv .venv && .venv/bin/pip install -r requirements.txt pytest httpx
+python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 .venv/bin/pytest            # needs rsync, rrsync and restic installed locally
 BACKUPKRAKE_DATA_DIR=./data BACKUPKRAKE_CONFIG_DIR=./config .venv/bin/uvicorn app.main:app --reload --port 8080
 ```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs the tests on every push and pull request. It then builds the Docker image, checks that the container starts, and pushes it for amd64 and arm64 (only on `main` and `v*` tags, not for pull requests).
 
 The tests run real backups through a fake `ssh` (`tests/fakessh`) that invokes the actual `rrsync -ro` forced command, plus a real local restic repository.
 
