@@ -202,6 +202,8 @@ async def dashboard(request: Request):
     off = offsite.get_settings()
     last_off = db.one("SELECT * FROM runs WHERE kind='offsite' ORDER BY id DESC LIMIT 1")
     active = db.query("SELECT * FROM runs WHERE status IN ('queued','running') ORDER BY id")
+    for r in active:
+        r["progress"] = runner.get_progress(r["id"])
     return render(
         request, "dashboard.html", hosts=hosts, usage=usage, offsite=off,
         offsite_configured=offsite.configured(off), last_offsite=last_off,
@@ -338,7 +340,16 @@ async def host_detail(request: Request, host_id: int):
                if r["snapshot"]}
     snapshots = [{"name": s, "run": by_snap.get(s)} for s in snaps]
     return render(request, "host_detail.html", host=host, snapshots=snapshots, runs=runs,
-                  next=scheduler.next_run(host_id), running=backup.host_lock(host_id).locked())
+                  next=scheduler.next_run(host_id), running=backup.host_lock(host_id).locked(),
+                  current=_current_run(host_id))
+
+
+def _current_run(host_id: int) -> dict | None:
+    r = db.one("SELECT * FROM runs WHERE host_id=? AND status IN ('queued','running') ORDER BY id DESC LIMIT 1",
+               (host_id,))
+    if r:
+        r["progress"] = runner.get_progress(r["id"])
+    return r
 
 
 @app.get("/hosts/{host_id}/edit", response_class=HTMLResponse)
@@ -594,6 +605,7 @@ async def run_log(run_id: int, offset: int = -1):
     return {
         "text": text, "offset": new_offset, "status": run["status"],
         "summary": run["summary"], "active": runner.is_active(run_id),
+        "progress": runner.get_progress(run_id),
     }
 
 

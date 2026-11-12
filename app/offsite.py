@@ -7,7 +7,7 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
-from . import backup, config, db, runner
+from . import backup, config, db, progress, runner
 
 DEFAULTS = {
     "enabled": False,
@@ -152,7 +152,8 @@ async def _do_offsite(ctx: runner.RunContext) -> None:
             argv += ["--parent", parent]
         backup.in_use.add(path)
         try:
-            rc, _ = await ctx.exec(argv, cwd=str(path), env=env)
+            rc, _ = await ctx.exec(argv, cwd=str(path), env={**env, "RESTIC_PROGRESS_FPS": "0.5"},
+                                   progress=progress.Tracker("restic", label=host["name"]))
         finally:
             backup.in_use.discard(path)
         # 3 = snapshot created but some files could not be read
@@ -223,7 +224,8 @@ async def _upload_config(ctx: runner.RunContext, s: dict, env: dict) -> bool:
         parent = await _parent_for(CONFIG_HOST, env)
         if parent:
             argv += ["--parent", parent]
-        rc, _ = await ctx.exec(argv, cwd=tmp, env=env)
+        rc, _ = await ctx.exec(argv, cwd=tmp, env={**env, "RESTIC_PROGRESS_FPS": "0.5"},
+                               progress=progress.Tracker("restic", label="configuration"))
     return rc in (0, 3)
 
 

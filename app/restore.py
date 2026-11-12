@@ -8,7 +8,7 @@ import re
 import tempfile
 from datetime import datetime
 
-from . import backup, browse, config, db, runner, sshkeys
+from . import backup, browse, config, db, progress, runner, sshkeys
 
 MODES = ("staging", "original", "custom")
 _ITEM_RE = re.compile(r"^(\*deleting|[<>ch.][fdLDS])")
@@ -84,6 +84,7 @@ def build_argv(params: dict, source: dict, target: dict, stamp: str) -> list[str
     src = f"{root}/./{params['path']}" if params["path"] else f"{root}/./"
     argv = [
         config.RSYNC_BIN, "-aH", "--numeric-ids", "--relative", "--itemize-changes", "--stats",
+        "--info=progress2",
         "-e", sshkeys.ssh_command_string(target, config.RESTORE_KEY),
     ]
     if source["acls_xattrs"]:
@@ -143,7 +144,8 @@ async def _do_restore(params: dict, source: dict, target: dict, ctx: runner.RunC
     root = backup.snapshot_path(source["name"], params["snapshot"])
     backup.in_use.add(root)
     try:
-        rc, out = await ctx.exec(build_argv(params, source, target, stamp), tail=100000)
+        rc, out = await ctx.exec(build_argv(params, source, target, stamp), tail=100000,
+                                 progress=progress.Tracker("rsync"))
     finally:
         backup.in_use.discard(root)
 

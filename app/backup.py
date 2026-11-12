@@ -14,7 +14,7 @@ import stat
 from datetime import datetime
 from pathlib import Path
 
-from . import config, db, retention, runner, sshkeys, windows
+from . import config, db, progress, retention, runner, sshkeys, windows
 
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")
 SNAP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{6}$")
@@ -133,6 +133,7 @@ def build_rsync_argv(host: dict, dest: Path, link_dest: Path | None, paths: list
         "--delete",
         "--delete-excluded",
         "--stats",
+        "--info=progress2",
         "-e", sshkeys.ssh_command_string(host),
     ]
     if host["acls_xattrs"]:
@@ -357,8 +358,10 @@ async def _transfer(
     partial = _prepare_partial(hdir, stamp, ctx)
     if link_dest:
         in_use.add(link_dest)
+    prev_ok = db.last_run(host["id"], status=("success", "warning"))
+    tracker = progress.Tracker("rsync", expected_files=(prev_ok or {}).get("stats", {}).get("files"))
     try:
-        rc, out = await ctx.exec(build_rsync_argv(host, partial, link_dest, paths))
+        rc, out = await ctx.exec(build_rsync_argv(host, partial, link_dest, paths), progress=tracker)
     finally:
         in_use.discard(link_dest)
     stats = parse_stats(out)

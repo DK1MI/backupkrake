@@ -31,7 +31,7 @@
     <div class="label">Active jobs</div>
     <div class="value">{{ active|length }}</div>
     <div class="sub">
-      {% for r in active %}<a href="/runs/{{ r.id }}">{{ run_kind(r) }}</a>{% if not loop.last %}, {% endif %}{% else %}idle{% endfor %}
+      {% for r in active %}<a href="/runs/{{ r.id }}">{{ run_kind(r) }}</a>{% if r.progress and r.progress.pct is not none %} {{ '%.0f'|format(r.progress.pct) }}%{% elif r.status == 'queued' %} (queued){% endif %}{% if not loop.last %}, {% endif %}{% else %}idle{% endfor %}
     </div>
   </div>
 </section>

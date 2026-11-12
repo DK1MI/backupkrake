@@ -204,3 +204,14 @@ form:has(input[name=scope][value=system]:checked) .scope-home,
 form:has(input[name=scope][value=home]:checked) .scope-system { display: none; }
 code.copyable { word-break: break-all; }
 #restore-form[data-target=home] .t-system, #restore-form:not([data-target=home]) .t-home { display: none; }
+
+/* live progress */
+.progress { padding: .8rem 1rem; }
+.progress-head { display: flex; justify-content: space-between; gap: 1rem; font-weight: 600; margin-bottom: .45rem; }
+.progress-track { height: 10px; background: var(--code-bg); border-radius: 5px; overflow: hidden; position: relative; }
+.progress-fill { height: 100%; width: 0; background: var(--accent); border-radius: 5px; transition: width .8s ease; }
+.progress.estimate .progress-fill { opacity: .75; }
+.progress.indeterminate .progress-fill { width: 30%; position: absolute; animation: progress-slide 1.4s ease-in-out infinite; }
+@keyframes progress-slide { from { left: -30%; } to { left: 100%; } }
+.progress .sub { margin-top: .45rem; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .progress.indeterminate .progress-fill { animation: none; left: 0; width: 100%; opacity: .35; } }

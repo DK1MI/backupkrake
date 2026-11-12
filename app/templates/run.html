@@ -49,6 +49,11 @@
   {% if run.stats.transferred_size is defined %}<div class="tile"><div class="label">Transferred</div><div class="value">{{ run.stats.transferred_size|bytes }}</div></div>{% endif %}
 </section>
 {% endif %}
+<div class="progress card" id="progress" hidden>
+  <div class="progress-head"><span id="progress-label"></span><span id="progress-pct"></span></div>
+  <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+  <div class="sub" id="progress-detail"></div>
+</div>
 <label class="inline follow"><input type="checkbox" id="follow" checked> Follow log</label>
 <pre class="log" id="log" data-run="{{ run.id }}" data-active="{{ 1 if active else 0 }}"></pre>
 {% endblock %}

@@ -19,6 +19,7 @@ purpose**, because storing the clients' uid/gid needs it.
 | `app/notify.py` | ntfy/Pushover delivery, run-finished hook, overdue-host check, heartbeat; hourly `housekeeping()` |
 | `app/runner.py` | Run rows + per-run log files, subprocess streaming, cancel/stop (`interrupted` vs `cancelled`), `finish_hooks` |
 | `app/scheduler.py` | Cron jobs per host, offsite job, hourly housekeeping job, `times_outside_window()` |
+| `app/progress.py` | Parses rsync `--info=progress2` / restic progress lines into live progress state |
 | `app/windows.py` | Backup-window parsing and maths (pure functions) |
 | `app/retention.py` | GFS keep selection (pure function) |
 | `app/browse.py` | Snapshot browsing/downloads; walks paths with `lstat`, never follows symlinks |
@@ -38,6 +39,14 @@ purpose**, because storing the clients' uid/gid needs it.
   - It aborts the whole transfer if any source path is missing, so `probe_paths()` checks each path
     first and skips missing ones (noted in the summary, not a warning).
   - It refuses `..` in paths.
+- **Progress:** `runner.exec(progress=Tracker(...))` reads output in chunks split on `\r`/`\n`.
+  Progress lines go to `ctx.progress` (served by `/runs/<id>/log`), not to the log; a summary line is
+  logged about once a minute. rsync's own `%` counts transferred bytes, which is useless for incremental
+  runs, so progress counts **files checked** instead:
+  - `to-chk` (complete file list) gives an exact figure.
+  - `ir-chk` (still scanning) gives an estimate against the previous run's file count, or no percentage.
+  - rsync prints a bogus early `to-chk=0/N`; such lines are ignored, and 100 % is set on exit code 0.
+  - restic needs `RESTIC_PROGRESS_FPS` to print progress without a terminal.
 - **ACLs/xattrs (`-A -X`)** are a per-host option. rsync builds without ACL support (common on BSDs)
   refuse the whole run. The connection test uses the same flags so it catches this.
 - **rsync exit codes 23/24** still produce a snapshot (status `warning`). Other failures keep the
@@ -92,6 +101,7 @@ bump it when releasing.
 
 - **v0.2.0 not tagged yet.** `main` has: config offsite backup, home-folder hosts, ACL error hints.
   The README still pins `0.1.0`, which lacks these. Update the pinned version in the README, then tag.
-- The scope-switching JS in `host_form.html` and the restore form's target toggle have no automated
-  tests (there's no browser in the test setup).
+- The page JavaScript (scope switching in `host_form.html`, the restore form's target toggle, and
+  `renderProgress` in `app.js`) has no automated tests. `renderProgress` was checked manually in
+  headless Chrome.
 - Ideas not started: notifications by email; per-time-of-day bandwidth limits; offsite backup windows.

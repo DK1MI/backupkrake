@@ -2,7 +2,9 @@
 import asyncio
 import logging
 import os
+import re
 import shlex
+import time
 from collections import deque
 from datetime import datetime
 
@@ -48,6 +50,7 @@ class RunContext:
         self.cancelled = False
         self.stop_reason: str | None = None  # set when stopped automatically (e.g. window ended)
         self.finished = False
+        self.progress: dict | None = None  # latest live progress (see progress.Tracker)
         self.proc: asyncio.subprocess.Process | None = None
         self._fh = open(log_path(self.run_id), "a", buffering=1, encoding="utf-8", errors="replace")
         _contexts[self.run_id] = self
@@ -96,6 +99,8 @@ class RunContext:
         env: dict | None = None,
         tail: int = 300,
         uninterruptible: bool = False,
+        progress=None,
+        progress_log_every: float = 60.0,
     ) -> tuple[int, list[str]]:
         """Run a command, streaming output to the log. Returns (exit code, last lines).
 
@@ -121,12 +126,39 @@ class RunContext:
         if not uninterruptible:
             self.proc = proc
         lines: deque[str] = deque(maxlen=tail)
+        last_progress_log = time.monotonic()
+        if progress is not None:
+            self.progress = {"label": progress.label, "kind": progress.kind, "pct": None, "starting": True}
+
+        def handle(line: str) -> None:
+            nonlocal last_progress_log
+            if progress is not None and progress.feed(line):
+                # Progress lines update the live state; only an occasional one goes to the log.
+                self.progress = progress.state
+                if time.monotonic() - last_progress_log >= progress_log_every:
+                    last_progress_log = time.monotonic()
+                    self.log(progress.summary())
+                return
+            if line.strip():
+                lines.append(line)
+                self.log(line)
+
         assert proc.stdout is not None
-        async for raw in proc.stdout:
-            line = raw.decode("utf-8", errors="replace").rstrip("\r\n")
-            lines.append(line)
-            self.log(line)
+        buf = b""
+        while chunk := await proc.stdout.read(65536):
+            # rsync's progress output separates updates with \r, regular lines with \n.
+            parts = re.split(rb"[\r\n]", buf + chunk)
+            buf = parts.pop()
+            for raw in parts:
+                handle(raw.decode("utf-8", errors="replace"))
+        if buf:
+            handle(buf.decode("utf-8", errors="replace"))
         rc = await proc.wait()
+        if progress is not None and progress.state:
+            if rc == 0:
+                progress.done()
+                self.progress = progress.state
+            self.log(progress.summary())
         if not uninterruptible:
             self.proc = None
             if self.cancelled:
@@ -140,6 +172,11 @@ def cancel(run_id: int) -> bool:
         return False
     ctx.stop()
     return True
+
+
+def get_progress(run_id: int) -> dict | None:
+    ctx = _contexts.get(run_id)
+    return ctx.progress if ctx else None
 
 
 def is_active(run_id: int) -> bool:

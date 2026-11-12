@@ -13,7 +13,11 @@
       · keep {{ host.keep_last }} last / {{ host.keep_daily }}d / {{ host.keep_weekly }}w / {{ host.keep_monthly }}m</div>
   </div>
   <div class="buttons">
+    {% if current %}
+    <a class="button primary" href="/runs/{{ current.id }}">{{ current.kind|capitalize }} running{% if current.progress and current.progress.pct is not none %} · {{ '%.0f'|format(current.progress.pct) }}%{% endif %} →</a>
+    {% else %}
     <form method="post" action="/hosts/{{ host.id }}/backup"><button class="primary" {% if running %}disabled{% endif %}>{{ 'Running…' if running else 'Back up now' }}</button></form>
+    {% endif %}
     <form method="post" action="/hosts/{{ host.id }}/test"><button>Test connection</button></form>
     <a class="button" href="/hosts/{{ host.id }}/edit">Edit</a>
   </div>

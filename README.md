@@ -11,7 +11,7 @@ Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a w
 - **Retention**: keep the last N snapshots plus N daily, weekly and monthly ones, applied after every backup.
 - **Push-restore**: put files or folders from any snapshot back onto a client (staging dir, original location or another folder, even on another host), with a dry-run preview first.
 - **Notifications**: ntfy and/or Pushover push messages when a backup fails or a host has had no successful backup for N days (optionally also warnings, offsite/restore failures, and "OK again"). An optional hourly heartbeat to healthchecks.io/Uptime Kuma covers the server itself being down.
-- **Web UI**: manage hosts, cron schedules, live logs, run history and a snapshot browser with file and `.tar.gz` downloads.
+- **Web UI**: manage hosts, cron schedules, live logs with a progress bar (files checked, data transferred, speed, time left), run history and a snapshot browser with file and `.tar.gz` downloads.
 - **Encrypted offsite copy**: restic uploads the latest snapshot of every host to S3, B2, SFTP, a rest-server, etc., with its own retention policy and a restore option.
 
 ## Deploy with Docker Compose
