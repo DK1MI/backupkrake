@@ -66,7 +66,8 @@ small, .sub { color: var(--muted); font-size: .85rem; }
   display: flex; align-items: center; gap: 1.5rem; flex-wrap: wrap;
   padding: .7rem 1.25rem; background: var(--surface); border-bottom: 1px solid var(--border);
 }
-.brand { font-weight: 700; color: var(--text); }
+.brand { font-weight: 700; color: var(--text); display: inline-flex; align-items: center; gap: .45rem; }
+.brand img { display: block; }
 .topbar nav { display: flex; gap: 1rem; flex: 1; flex-wrap: wrap; }
 .topbar nav a { color: var(--muted); padding: .2rem 0; border-bottom: 2px solid transparent; }
 .topbar nav a.active, .topbar nav a:hover { color: var(--text); border-bottom-color: var(--accent); text-decoration: none; }
@@ -161,6 +162,7 @@ details.advanced[open] summary, details.danger-zone[open] summary { margin-botto
 /* misc pages */
 .login { max-width: 360px; margin: 10vh auto 0; }
 .login h1 { text-align: center; margin-bottom: 1rem; }
+.login-logo { display: block; margin: 0 auto .5rem; }
 .empty { text-align: center; padding: 2.5rem 1rem; }
 nav.path { display: flex; flex-wrap: wrap; gap: .25rem; align-items: center; margin-bottom: .8rem; font-family: ui-monospace, Menlo, monospace; font-size: .9rem; }
 nav.path .button { margin-left: auto; font-family: system-ui, sans-serif; }

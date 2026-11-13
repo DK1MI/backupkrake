@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Backupkrake{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect x='1' y='3' width='14' height='10' rx='2' fill='%232f6fdf'/><rect x='3' y='6' width='6' height='1.5' fill='white'/></svg>">
+  <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
 </head>
 <body>
 {% if request.session.get('user') %}
 <header class="topbar">
-  <a class="brand" href="/">Backupkrake</a>
+  <a class="brand" href="/"><img src="/static/logo.svg" alt="" width="28" height="28">Backupkrake</a>
   <nav>
     <a href="/" {% if request.url.path == '/' or request.url.path.startswith('/hosts') %}class="active"{% endif %}>Hosts</a>
     <a href="/runs" {% if request.url.path.startswith('/runs') %}class="active"{% endif %}>Runs</a>
