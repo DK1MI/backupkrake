@@ -8,7 +8,7 @@ Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a w
 
 - **Pull over SSH**: the server connects to each client as `root` and copies files with `rsync`. Clients need only `rsync` and the server's public key, no agent.
 - **Non-root hosts**: back up just your home folder on systems where you only have a normal account (e.g. shared Unix systems), with a key locked to that folder.
-- **Hardlinked snapshots**: every snapshot is a complete, browsable directory tree. Unchanged files are hardlinked to the previous snapshot, so each new snapshot only uses space for changed files.
+- **Hardlinked snapshots**: every snapshot is a complete, browsable directory tree. Unchanged files are hardlinked to the previous snapshot, so each new snapshot only uses space for changed files. See [How snapshots work](#how-snapshots-work).
 - **Backup windows & bandwidth limits**: per host, e.g. only between 22:00 and 06:00 at max 20 MiB/s; a backup still running when the window closes is stopped and resumes the next night.
 - **Retention**: keep the last N snapshots plus N daily, weekly and monthly ones, applied after every backup.
 - **Push-restore**: put files or folders from any snapshot back onto a client (staging dir, original location or another folder, even on another host), with a dry-run preview first.
@@ -222,6 +222,71 @@ Each host can have a **backup window** like `22:00-06:00` (may cross midnight; s
 Interrupted and skipped runs don't send failure notifications. If a host never manages to finish inside its window, the overdue alert reports it.
 
 Configured paths that don't exist on a client (e.g. `/srv`) are skipped and noted in the run summary.
+
+## How snapshots work
+
+Backupkrake doesn't create hard links itself; **rsync does**. Backupkrake passes rsync the right options and manages the snapshot directories around it.
+
+### Directory layout
+
+```
+/data/hosts/web1/
+├── 2026-11-11_030000/          complete snapshot
+├── 2026-11-12_030000/          complete snapshot
+├── 2026-11-13_030000/          complete snapshot
+├── 2026-11-14_030000.partial/  backup in progress, or interrupted and waiting to resume
+└── latest -> 2026-11-13_030000
+```
+
+Every snapshot directory is a complete copy of the backed-up paths, laid out as on the client (`etc/nginx/nginx.conf`, `home/alice/…`). You can browse, copy or `rsync` from any of them directly. No tool or index is needed to read them.
+
+### What happens during a backup
+
+1. Backupkrake creates `<timestamp>.partial/`, or renames a leftover `.partial` directory from an interrupted run so the backup resumes from it.
+2. It runs rsync on the client's paths with this snapshot as the destination and the **previous complete snapshot** as `--link-dest`:
+   ```
+   rsync -aH --numeric-ids --relative --delete --link-dest=/data/hosts/web1/2026-11-13_030000 \
+         root@web1:/etc root@web1:/home  /data/hosts/web1/2026-11-14_030000.partial/
+   ```
+3. For every file, rsync looks for the same path in the `--link-dest` snapshot:
+   - **Unchanged** (same size and modification time, plus the same permissions, owner, group and, if enabled, ACLs/xattrs): rsync doesn't transfer anything. It creates a **hard link** to the file in the previous snapshot, a second directory entry for the same data on disk.
+   - **Changed:** rsync sends only the changed parts over the network (its delta algorithm), using the old version as a base. It then writes a **new, complete file** into the new snapshot. The old snapshot keeps the old version.
+   - **New:** copied in full.
+   - **Deleted on the client:** simply not present in the new snapshot. Older snapshots still have it.
+4. When rsync finishes, the directory is renamed from `.partial` to its timestamp and `latest` is pointed at it. Only then does it count as a snapshot. If rsync exits with code 23/24 (some files unreadable or vanished), the snapshot is still kept and the run is marked *warning*. On any other failure the `.partial` directory stays and the next run continues with it.
+5. Retention deletes snapshots that are no longer needed.
+
+### Why deleting a snapshot is safe
+
+A file's data on disk stays until its **last** hard link is removed. Deleting the oldest snapshot only removes its directory entries. Every file that a newer snapshot still links to keeps its data, and data that only existed in the deleted snapshot is freed. Snapshots don't depend on each other: any of them can be deleted in any order, and there is no chain to break as with classic incremental backups.
+
+### How much space it uses
+
+Roughly the size of the client's data once, plus a full copy of every file version that changed within your retention period. Ten snapshots of an unchanged 50 GB server use about 50 GB, plus some space for directories, because directories can't be hard-linked.
+
+To see the real usage, run `du` on the host directory, not on a single snapshot. `du` counts each hard-linked file once per invocation:
+
+```sh
+du -sh /data/hosts/web1                      # real space used by all snapshots of web1
+du -sh /data/hosts/web1/2026-11-13_030000    # the snapshot's apparent full size
+du -shc /data/hosts/web1/*/ | tail -n 20     # first snapshot full, later ones only what's new
+```
+
+### Limits of hard-link deduplication
+
+- **Whole files only.** A changed file is stored again in full. A 20 GB VM image or database file that changes daily costs 20 GB per kept snapshot. Exclude such files and back them up another way, for example with a dump in a pre-command, or keep fewer snapshots for that host.
+- **Matched by path.** A renamed or moved file counts as new, as does an identical file at another path.
+- **Metadata changes count.** Different metadata can't share one hard link, so a `chmod` or `chown` on a file also stores it again.
+- **Only the previous snapshot is compared.** A file that is deleted and later restored on the client is stored again.
+- **Same filesystem.** All snapshots of a host must be on one filesystem that supports hard links: ext4, XFS, btrfs or ZFS. Not NFS/SMB shares or FAT/exFAT.
+
+### Hard links on the client
+
+Files that are hard links of each other on the client stay hard-linked in the snapshot (rsync `-H`), so they are stored once. Restores recreate them the same way.
+
+### Offsite copies
+
+restic, used for offsite copies, doesn't use hard links. It splits files into content-defined chunks and stores each chunk only once, encrypted. That deduplication works within files, across files and across hosts, so a large file with small changes uploads only the changed chunks. Each run uploads only the latest local snapshot. restic doesn't re-read unchanged files, because Backupkrake passes the previous upload as `--parent` and ignores ctime, which hard-linking changes.
 
 ## Restoring
 
