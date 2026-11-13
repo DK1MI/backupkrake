@@ -26,6 +26,17 @@ def test_requires_login(client):
     assert client.get("/healthz").json() == {"ok": True}
 
 
+def test_static_files_are_versioned(client):
+    """Static URLs carry a content hash so browsers don't keep an old stylesheet after an update."""
+    import re
+    html = client.get("/login").text
+    urls = re.findall(r'(?:href|src)="(/static/[^"]+)"', html)
+    assert any(u.startswith("/static/style.css?v=") for u in urls)
+    assert all("?v=" in u for u in urls)
+    for u in urls:
+        assert client.get(u).status_code == 200
+
+
 def test_bad_login(client):
     r = client.post("/login", data={"username": "admin", "password": "nope"})
     assert "Invalid username or password" in r.text

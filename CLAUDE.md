@@ -69,6 +69,8 @@ purpose**, because storing the clients' uid/gid needs it.
   with `_`, so it can't collide. The DB is copied with SQLite's backup API, not the file.
 - **Restore with `--delete`** passes the host's excludes so excluded paths (docker, caches) are
   protected, and deleting is refused for whole-snapshot restores.
+- **Static files:** reference them in templates as `{{ static('style.css') }}`, never as a plain
+  `/static/…` path. `static()` appends a content hash so browsers load the new file after an update.
 - **Sessions:** Starlette only saves the session on key *assignment*. `flash()` reassigns the list on
   purpose; don't mutate session values in place.
 - **Schema changes:** add the column to `SCHEMA` *and* to `MIGRATIONS` in `db.py`, and to `HOST_FIELDS`

@@ -1,5 +1,7 @@
 """FastAPI web interface."""
 import asyncio
+import functools
+import hashlib
 import hmac
 import logging
 import re
@@ -123,6 +125,20 @@ def fmt_snapshot(name: str) -> str:
 
 
 templates.env.filters.update(bytes=fmt_bytes, dt=fmt_dt, duration=fmt_duration, snap=fmt_snapshot)
+
+
+@functools.cache
+def static_url(name: str) -> str:
+    """URL of a static file with a content hash, so browsers fetch the new file after
+    an update instead of reusing a cached copy of the old one."""
+    try:
+        digest = hashlib.sha256((BASE / "static" / name).read_bytes()).hexdigest()[:10]
+    except OSError:
+        return f"/static/{name}"
+    return f"/static/{name}?v={digest}"
+
+
+templates.env.globals["static"] = static_url
 
 
 def flash(request: Request, msg: str, level: str = "info") -> None:

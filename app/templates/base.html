@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Backupkrake{% endblock %}</title>
-  <link rel="stylesheet" href="/static/style.css">
-  <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+  <link rel="stylesheet" href="{{ static('style.css') }}">
+  <link rel="icon" type="image/svg+xml" href="{{ static('logo.svg') }}">
 </head>
 <body>
 {% if request.session.get('user') %}
 <header class="topbar">
-  <a class="brand" href="/"><img src="/static/logo.svg" alt="" width="28" height="28">Backupkrake</a>
+  <a class="brand" href="/"><img src="{{ static('logo.svg') }}" alt="" width="28" height="28">Backupkrake</a>
   <nav>
     <a href="/" {% if request.url.path == '/' or request.url.path.startswith('/hosts') %}class="active"{% endif %}>Hosts</a>
     <a href="/runs" {% if request.url.path.startswith('/runs') %}class="active"{% endif %}>Runs</a>
@@ -27,7 +27,7 @@
   {% endfor %}
   {% block content %}{% endblock %}
 </main>
-<script src="/static/app.js"></script>
+<script src="{{ static('app.js') }}"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
