@@ -627,7 +627,8 @@ async def offsite_page(request: Request):
     s = offsite.get_settings()
     runs = [r for r in db.list_runs(limit=200) if r["kind"].startswith("offsite")][:20]
     return render(request, "offsite.html", s=s, configured=offsite.configured(s), runs=runs,
-                  next=scheduler.next_run(None), errors=[])
+                  next=scheduler.next_run(None), errors=[],
+                  offsite_pubkey=sshkeys.offsite_public_key(), sftp=offsite.is_sftp(s))
 
 
 @app.post("/offsite")
@@ -655,7 +656,8 @@ async def offsite_save(request: Request):
     if errors:
         runs = [r for r in db.list_runs(limit=200) if r["kind"].startswith("offsite")][:20]
         return render(request, "offsite.html", s=s, configured=offsite.configured(s), runs=runs,
-                      next=scheduler.next_run(None), errors=errors)
+                      next=scheduler.next_run(None), errors=errors,
+                      offsite_pubkey=sshkeys.offsite_public_key(), sftp=offsite.is_sftp(s))
     offsite.save_settings(s)
     scheduler.sync_offsite()
     flash(request, "Offsite settings saved")

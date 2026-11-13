@@ -99,3 +99,18 @@ def test_offsite_includes_config(tmp_path, monkeypatch):
     log = open(f"{os.environ['BACKUPKRAKE_CONFIG_DIR']}/logs/{rid}.log").read()
     assert "--host _backupkrake-config" not in log and "configuration: uploading" not in log
     assert "+ config" not in db.get_run(rid)["summary"]
+
+
+def test_sftp_repository_uses_offsite_key_and_known_hosts():
+    import shlex
+    from app import config, offsite
+    argv = offsite.restic_argv({"repository": "sftp://u1@box.example:23//backupkrake"}, "snapshots")
+    assert argv[0] == config.RESTIC_BIN and argv[-1] == "snapshots"
+    opt = argv[argv.index("-o") + 1]
+    assert opt.startswith("sftp.args=")
+    ssh_args = shlex.split(opt.split("=", 1)[1])
+    assert ssh_args[ssh_args.index("-i") + 1] == str(config.OFFSITE_KEY)
+    assert f"UserKnownHostsFile={config.KNOWN_HOSTS}" in ssh_args
+    assert "StrictHostKeyChecking=accept-new" in ssh_args
+    # Other backends get no sftp options.
+    assert offsite.restic_argv({"repository": "s3:https://x/y"}, "init") == [config.RESTIC_BIN, "init"]

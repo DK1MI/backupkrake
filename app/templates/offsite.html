@@ -30,6 +30,18 @@
       <input name="password" type="password" autocomplete="new-password" placeholder="{{ '•••••••• (unchanged; type to replace)' if s.password else 'required' }}">
       <small><strong>Keep a copy of this password somewhere other than this server.</strong> Without it the offsite data cannot be decrypted.</small>
     </label>
+    <details class="hint"{% if sftp %} open{% endif %}>
+      <summary>SFTP repositories (Hetzner Storage Box, NAS, any SSH server)</summary>
+      <p>For <code>sftp:</code> repositories Backupkrake logs in with its own offsite key. Add this public key to the
+        <code>authorized_keys</code> of the account on the SFTP server:</p>
+      <pre class="copy">{{ offsite_pubkey }}</pre>
+      <p>The server's host key is learned on first contact and kept in <code>/config/ssh/known_hosts</code>.
+        For a non-standard port, use the URL form <code>sftp://user@host:PORT//absolute/path</code>
+        (a single <code>/</code> after the port means a path relative to the login directory).</p>
+      <p>Hetzner Storage Box: enable SSH support, then install the key from any machine with
+        <code>echo '{{ offsite_pubkey }}' | ssh -p 23 uXXXXX@uXXXXX.your-storagebox.de install-ssh-key</code>
+        and use <code>sftp://uXXXXX@uXXXXX.your-storagebox.de:23/backupkrake</code>.</p>
+    </details>
     <label>Backend environment <small>KEY=VALUE per line, e.g. credentials</small>
       <textarea name="env" rows="4" placeholder="AWS_ACCESS_KEY_ID=…&#10;AWS_SECRET_ACCESS_KEY=…">{{ s.env }}</textarea>
     </label>

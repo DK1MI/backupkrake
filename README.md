@@ -240,7 +240,7 @@ Configured paths that don't exist on a client (e.g. `/srv`) are skipped and note
 
 ## Offsite (restic)
 
-On the **Offsite** page set the repository (e.g. `s3:https://…/bucket/path`, `b2:bucket:path`, `sftp:user@host:/path`), password and any credentials as environment lines. Click **Initialise repository** once, then **Run now** or enable the schedule. Schedule it after your host backups usually finish.
+On the **Offsite** page set the repository (e.g. `s3:https://…/bucket/path`, `b2:bucket:path`, `sftp:user@host:/path`), password and any credentials as environment lines. For `sftp:` repositories Backupkrake uses its own offsite SSH key (`config/ssh/id_ed25519_offsite`); the Offsite page shows the public key to add on the SFTP server, and the server's host key is learned on first contact. Use `sftp://user@host:PORT//path` for a non-standard port (Hetzner Storage Box: port 23, install the key with `install-ssh-key`). Click **Initialise repository** once, then **Run now** or enable the schedule. Schedule it after your host backups usually finish.
 
 Only the latest local snapshot of each host is uploaded; restic keeps its own history (deduplicated). Each restic snapshot is tagged with its local snapshot name.
 

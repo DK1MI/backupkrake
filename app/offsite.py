@@ -7,6 +7,8 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
+import shlex
+
 from . import backup, config, db, progress, runner
 
 DEFAULTS = {
@@ -62,8 +64,34 @@ def restic_env(s: dict) -> dict:
     return env
 
 
+def is_sftp(s: dict) -> bool:
+    return (s.get("repository") or "").startswith("sftp:")
+
+
+def _sftp_options(s: dict) -> list[str]:
+    """restic's sftp backend runs a plain ``ssh``, which inside the container would
+    look for keys and known_hosts in root's (non-persistent) home. Point it at the
+    offsite key and Backupkrake's own known_hosts in /config instead."""
+    if not is_sftp(s):
+        return []
+    args = [
+        "-i", str(config.OFFSITE_KEY),
+        "-o", "IdentitiesOnly=yes",
+        "-o", "BatchMode=yes",
+        "-o", "StrictHostKeyChecking=accept-new",
+        "-o", f"UserKnownHostsFile={config.KNOWN_HOSTS}",
+        "-o", "ServerAliveInterval=60",
+        "-o", "ServerAliveCountMax=3",
+    ]
+    return ["-o", "sftp.args=" + shlex.join(args)]
+
+
+def restic_argv(s: dict, *args: str) -> list[str]:
+    return [config.RESTIC_BIN] + _sftp_options(s) + list(args)
+
+
 def _base(s: dict) -> list[str]:
-    argv = [config.RESTIC_BIN]
+    argv = restic_argv(s)
     if int(s.get("limit_upload") or 0) > 0:
         argv.append(f"--limit-upload={int(s['limit_upload'])}")
     return argv
@@ -84,7 +112,7 @@ async def _json(argv: list[str], env: dict) -> object:
 
 async def list_snapshots() -> list[dict]:
     s = get_settings()
-    data = await _json([config.RESTIC_BIN, "snapshots", "--json", "--tag", TAG], restic_env(s))
+    data = await _json(restic_argv(s, "snapshots", "--json", "--tag", TAG), restic_env(s))
     snaps = data or []
     for snap in snaps:
         tags = [t for t in (snap.get("tags") or []) if t.startswith("snapshot=")]
@@ -93,10 +121,10 @@ async def list_snapshots() -> list[dict]:
     return snaps
 
 
-async def _parent_for(host_name: str, env: dict) -> str | None:
+async def _parent_for(s: dict, host_name: str, env: dict) -> str | None:
     try:
         snaps = await _json(
-            [config.RESTIC_BIN, "snapshots", "--json", "--tag", TAG, "--host", host_name, "--latest", "1"],
+            restic_argv(s, "snapshots", "--json", "--tag", TAG, "--host", host_name, "--latest", "1"),
             env,
         )
     except Exception:  # noqa: BLE001
@@ -147,7 +175,7 @@ async def _do_offsite(ctx: runner.RunContext) -> None:
             # so restic does not re-read unchanged files.
             "--ignore-ctime",
         ]
-        parent = await _parent_for(host["name"], env)
+        parent = await _parent_for(s, host["name"], env)
         if parent:
             argv += ["--parent", parent]
         backup.in_use.add(path)
@@ -173,7 +201,7 @@ async def _do_offsite(ctx: runner.RunContext) -> None:
     if policy and (ok or config_ok):
         ctx.log("--- applying offsite retention")
         rc, _ = await ctx.exec(
-            [config.RESTIC_BIN, "forget", "--tag", TAG, "--group-by", "host", "--prune"] + policy, env=env
+            restic_argv(s, "forget", "--tag", TAG, "--group-by", "host", "--prune", *policy), env=env
         )
         if rc != 0:
             failed.append("forget/prune")
@@ -221,7 +249,7 @@ async def _upload_config(ctx: runner.RunContext, s: dict, env: dict) -> bool:
         ctx.log(f"exported: {', '.join(names)}")
         argv = _base(s) + ["backup", ".", "--host", CONFIG_HOST, "--tag", TAG, "--tag", "config",
                            "--ignore-ctime", "--ignore-inode"]
-        parent = await _parent_for(CONFIG_HOST, env)
+        parent = await _parent_for(s, CONFIG_HOST, env)
         if parent:
             argv += ["--parent", parent]
         rc, _ = await ctx.exec(argv, cwd=tmp, env={**env, "RESTIC_PROGRESS_FPS": "0.5"},
@@ -241,7 +269,7 @@ async def run_simple(kind: str, args: list[str]) -> int | None:
             if not configured(s):
                 ctx.finish("failed", "offsite repository not configured")
                 return ctx.run_id
-            rc, _ = await ctx.exec([config.RESTIC_BIN] + args, env=restic_env(s))
+            rc, _ = await ctx.exec(restic_argv(s, *args), env=restic_env(s))
             ctx.finish("success" if rc == 0 else "failed", "" if rc == 0 else f"exit {rc}")
         except runner.Cancelled:
             ctx.finish("cancelled", "cancelled by user")

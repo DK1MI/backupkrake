@@ -17,6 +17,7 @@ RESTORE_STAGING = "/var/tmp/backupkrake-restore"  # on the client
 SSH_DIR = CONFIG_DIR / "ssh"
 SSH_KEY = SSH_DIR / "id_ed25519"
 RESTORE_KEY = SSH_DIR / "id_ed25519_restore"
+OFFSITE_KEY = SSH_DIR / "id_ed25519_offsite"   # for sftp: offsite repositories
 KNOWN_HOSTS = SSH_DIR / "known_hosts"
 DB_PATH = CONFIG_DIR / "backupkrake.db"
 SECRET_FILE = CONFIG_DIR / "secret_key"

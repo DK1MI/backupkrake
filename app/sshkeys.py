@@ -26,6 +26,7 @@ def _ensure(path: Path, comment: str) -> None:
 def ensure_key() -> None:
     _ensure(config.SSH_KEY, "backupkrake")
     _ensure(config.RESTORE_KEY, "backupkrake-restore")
+    _ensure(config.OFFSITE_KEY, "backupkrake-offsite")
     config.KNOWN_HOSTS.touch(exist_ok=True)
 
 
@@ -40,6 +41,10 @@ def public_key() -> str:
 
 def restore_public_key() -> str:
     return _pub(config.RESTORE_KEY)
+
+
+def offsite_public_key() -> str:
+    return _pub(config.OFFSITE_KEY)
 
 
 def rrsync_root(scope: str = "system") -> str:

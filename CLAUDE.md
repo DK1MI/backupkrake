@@ -31,6 +31,9 @@ purpose**, because storing the clients' uid/gid needs it.
 
 - **Two SSH keys.** The backup key is authorized on clients as `command="rrsync -ro /"` (read-only) and the
   restore key as `rrsync -wo /` (write-only). Never make restores use the backup key, or the reverse.
+- **Offsite sftp:** restic's sftp backend runs plain `ssh`, which in the container would use root's
+  non-persistent `~/.ssh`. `offsite.restic_argv()` adds `-o sftp.args=…` with a third key
+  (`id_ed25519_offsite`) and `/config/ssh/known_hosts`. Every restic call must go through it.
 - **Host scope.** `system` hosts log in as root and use absolute paths. `home` hosts log in as a normal
   user and use paths relative to `$HOME`; their key line is `rrsync -ro .`, which works because ssh runs
   forced commands in `$HOME`. Relative paths also work with an unrestricted key. Home-scope restores go
