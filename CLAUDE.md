@@ -102,8 +102,6 @@ bump it when releasing.
 
 ## Open items
 
-- **v0.2.0 not tagged yet.** `main` has: config offsite backup, home-folder hosts, ACL error hints.
-  The README still pins `0.1.0`, which lacks these. Update the pinned version in the README, then tag.
 - The page JavaScript (scope switching in `host_form.html`, the restore form's target toggle, and
   `renderProgress` in `app.js`) has no automated tests. `renderProgress` was checked manually in
   headless Chrome.
