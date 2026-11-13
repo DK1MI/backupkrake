@@ -58,14 +58,14 @@
     <legend>What to back up</legend>
     <div class="grid two">
       <label>Paths
+        <textarea name="paths" rows="8" required>{{ host.paths }}</textarea>
         <small class="scope-system">one absolute path per line</small>
         <small class="scope-home">relative to the home folder, one per line; <code>.</code> = the whole home folder</small>
-        <textarea name="paths" rows="8" required>{{ host.paths }}</textarea>
       </label>
       <label>Excludes
+        <textarea name="excludes" rows="8">{{ host.excludes }}</textarea>
         <small class="scope-system">rsync patterns, one per line; leading <code>/</code> anchors to the filesystem root</small>
         <small class="scope-home">rsync patterns, one per line; leading <code>/</code> anchors to the home folder, e.g. <code>/.cache/</code></small>
-        <textarea name="excludes" rows="8">{{ host.excludes }}</textarea>
       </label>
     </div>
     <div class="checks">
@@ -111,11 +111,13 @@
   <details class="card advanced" {% if host.pre_cmd or host.post_cmd or host.extra_args %}open{% endif %}>
     <summary>Advanced</summary>
     <div class="grid">
-      <label>Pre-backup command <small>runs on the client via SSH, e.g. a database dump. A failure aborts the backup.</small>
+      <label>Pre-backup command
         <input name="pre_cmd" value="{{ host.pre_cmd }}" placeholder="pg_dumpall -U postgres > /var/backups/pg.sql">
+        <small>Runs on the client via SSH, e.g. a database dump. A failure aborts the backup.</small>
       </label>
-      <label>Post-backup command <small>runs after rsync, even if it failed</small>
+      <label>Post-backup command
         <input name="post_cmd" value="{{ host.post_cmd }}">
+        <small>Runs after rsync, even if it failed.</small>
       </label>
       <label>Extra rsync arguments
         <input name="extra_args" value="{{ host.extra_args }}" placeholder="--bwlimit=20M">

@@ -136,6 +136,10 @@ button.link:hover { color: var(--text); }
 .logout { margin: 0; }
 
 .form fieldset { margin: 0 0 1rem; }
+/* Fields stacked directly in a fieldset (not in a grid) need the same spacing as grid rows. */
+.form fieldset > label:not(.inline):not(:last-child), .form fieldset > details:not(:last-child),
+.form fieldset > .checks:not(:last-child) { margin-bottom: .9rem; }
+.form fieldset > small:not(:last-child) { display: block; margin-bottom: .9rem; }
 .form legend { font-weight: 600; padding: 0 .3rem; }
 label { display: flex; flex-direction: column; gap: .25rem; font-weight: 500; font-size: .92rem; }
 label small { font-weight: 400; }
@@ -148,8 +152,10 @@ input[type=checkbox] { width: auto; }
 input[readonly] { opacity: .7; }
 textarea { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .85rem; resize: vertical; }
 input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
-.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .9rem 1rem; margin-bottom: .8rem; align-items: end; }
-.grid.two { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: start; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .9rem 1rem; margin-bottom: .8rem; align-items: start; }
+/* A checkbox next to text fields: line it up with the inputs, not with their captions. */
+.grid > label.inline { margin-top: 2.1rem; }
+.grid.two { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
 .grid.four { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
 .checks { display: flex; flex-direction: column; gap: .35rem; }
 .checks label { flex-direction: row; align-items: center; gap: .45rem; font-weight: 400; }

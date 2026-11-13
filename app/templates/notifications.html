@@ -71,8 +71,9 @@
       <label><input type="checkbox" name="on_warning" value="1" {% if s.on_warning %}checked{% endif %}> Finished with warnings <small>(some files unreadable or vanished, post-command failed)</small></label>
       <label><input type="checkbox" name="on_recovery" value="1" {% if s.on_recovery %}checked{% endif %}> Backup works again after a failure or overdue alert</label>
     </div>
-    <label>Backupkrake URL <small>optional, makes notifications link to the run, e.g. <code>http://nas.lan:8080</code></small>
-      <input name="base_url" value="{{ s.base_url }}" placeholder="http://nas.lan:8080"></label>
+    <label>Backupkrake URL
+      <input name="base_url" value="{{ s.base_url }}" placeholder="http://nas.lan:8080">
+      <small>Optional. Makes notifications link to the run, e.g. <code>http://nas.lan:8080</code>.</small></label>
   </fieldset>
 
   <fieldset class="card">
