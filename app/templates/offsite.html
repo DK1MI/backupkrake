@@ -40,7 +40,7 @@
         (a single <code>/</code> after the port means a path relative to the login directory).</p>
       <p>Hetzner Storage Box: enable SSH support, then install the key from any machine with
         <code>echo '{{ offsite_pubkey }}' | ssh -p 23 uXXXXX@uXXXXX.your-storagebox.de install-ssh-key</code>
-        and use <code>sftp://uXXXXX@uXXXXX.your-storagebox.de:23/backupkrake</code>.</p>
+        and use <code>sftp://uXXXXX@uXXXXX.your-storagebox.de:23//backupkrake</code>.</p>
     </details>
     <label>Backend environment <small>KEY=VALUE per line, e.g. credentials</small>
       <textarea name="env" rows="4" placeholder="AWS_ACCESS_KEY_ID=…&#10;AWS_SECRET_ACCESS_KEY=…">{{ s.env }}</textarea>
