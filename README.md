@@ -14,6 +14,25 @@ Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a w
 - **Web UI**: manage hosts, cron schedules, live logs with a progress bar (files checked, data transferred, speed, time left), run history and a snapshot browser with file and `.tar.gz` downloads.
 - **Encrypted offsite copy**: restic uploads the latest snapshot of every host to S3, B2, SFTP, a rest-server, etc., with its own retention policy and a restore option.
 
+## Screenshots
+
+Overview of all configured hosts:
+
+![](backupkrake-01.png)
+
+Monitoring of an active backup run:
+
+![](backupkrake-02.png)
+
+Detail view of one host and its executed runs:
+
+![](backupkrake-03.png)
+
+Overview of all runs so far:
+
+![](backupkrake-04.png)
+
+
 ## Deploy with Docker Compose
 
 Prebuilt images for **amd64 and arm64** (e.g. Raspberry Pi 4/5, ARM NAS) are published to `ghcr.io/dk1mi/backupkrake`. You don't need to clone this repository to run it.
