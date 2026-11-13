@@ -1,8 +1,12 @@
+<p align="center"><img src="app/static/logo.svg" alt="Backupkrake logo: a purple octopus holding a hard disk and a server" width="180"></p>
+
 # Backupkrake
 
 [![CI](https://github.com/DK1MI/backupkrake/actions/workflows/ci.yml/badge.svg)](https://github.com/DK1MI/backupkrake/actions/workflows/ci.yml)
 
 **DISCLAIMER: USE AT YOUR OWN RISK! I WILL NOT BE RESPONSIBLE FOR ANY DATA LOSS! TEST THE SOFTWARE BEFORE USING IT!**
+
+**What's in the name?** *Krake* is German for octopus (and the root of the sea monster *Kraken*). Backupkrake is a backup octopus: it reaches out with many arms to all your machines, pulls their data in over SSH and keeps it safe in its den, with a copy hidden away offsite. The clients don't have to do anything; the octopus does the grabbing.
 
 Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a web interface.
 

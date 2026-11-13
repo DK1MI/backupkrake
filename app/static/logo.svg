@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="t">
+  <title id="t">Backupkrake</title>
+  <defs>
+    <linearGradient id="skin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8f5fd0"/>
+      <stop offset="1" stop-color="#6a3fb0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- arms -->
+  <g fill="none" stroke="#6a3fb0" stroke-width="15" stroke-linecap="round">
+    <path d="M92 132 C62 140 36 132 30 108 C26 92 34 80 46 82"/>
+    <path d="M98 146 C76 168 46 176 30 198 C22 210 30 222 42 216"/>
+    <path d="M114 154 C110 182 96 206 100 230 C102 240 114 240 116 230"/>
+    <path d="M142 154 C146 182 160 206 156 230 C154 240 142 240 140 230"/>
+    <path d="M158 146 C180 168 210 176 226 198 C234 210 226 222 214 216"/>
+    <path d="M164 132 C194 140 220 132 226 108 C230 92 222 80 210 82"/>
+  </g>
+  <!-- suckers -->
+  <g fill="#d9c6f2">
+    <circle cx="56" cy="134" r="3"/><circle cx="40" cy="120" r="3"/>
+    <circle cx="66" cy="172" r="3"/><circle cx="46" cy="186" r="3"/>
+    <circle cx="106" cy="190" r="3"/><circle cx="102" cy="210" r="3"/>
+    <circle cx="150" cy="190" r="3"/><circle cx="154" cy="210" r="3"/>
+    <circle cx="190" cy="172" r="3"/><circle cx="210" cy="186" r="3"/>
+    <circle cx="200" cy="134" r="3"/><circle cx="216" cy="120" r="3"/>
+  </g>
+
+  <!-- head -->
+  <path d="M128 24 C178 24 196 64 192 104 C189 134 166 158 128 158 C90 158 67 134 64 104 C60 64 78 24 128 24 Z"
+        fill="url(#skin)"/>
+  <ellipse cx="108" cy="52" rx="16" ry="10" fill="#ffffff" opacity=".18" transform="rotate(-25 108 52)"/>
+
+  <!-- eyes -->
+  <circle cx="106" cy="100" r="15" fill="#fff"/>
+  <circle cx="150" cy="100" r="15" fill="#fff"/>
+  <circle cx="109" cy="103" r="7" fill="#1f1530"/>
+  <circle cx="153" cy="103" r="7" fill="#1f1530"/>
+  <circle cx="111" cy="100" r="2.2" fill="#fff"/>
+  <circle cx="155" cy="100" r="2.2" fill="#fff"/>
+  <!-- smile -->
+  <path d="M116 130 Q128 140 140 130" fill="none" stroke="#1f1530" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- left top arm holds a hard disk -->
+  <g transform="translate(26 52) rotate(-12)">
+    <rect x="0" y="0" width="38" height="28" rx="5" fill="#2b2f3a"/>
+    <rect x="3" y="3" width="32" height="22" rx="3" fill="#9aa3b5"/>
+    <circle cx="16" cy="14" r="8" fill="#c9d0dd"/>
+    <circle cx="16" cy="14" r="2" fill="#2b2f3a"/>
+    <path d="M24 8 L32 18" stroke="#2b2f3a" stroke-width="2.5" stroke-linecap="round"/>
+  </g>
+  <!-- right top arm holds a server -->
+  <g transform="translate(194 46) rotate(12)">
+    <rect x="0" y="0" width="38" height="34" rx="4" fill="#2b2f3a"/>
+    <rect x="4" y="4" width="30" height="7" rx="1.5" fill="#4a5163"/>
+    <rect x="4" y="14" width="30" height="7" rx="1.5" fill="#4a5163"/>
+    <rect x="4" y="24" width="30" height="7" rx="1.5" fill="#4a5163"/>
+    <circle cx="29" cy="7.5" r="1.8" fill="#4ade80"/>
+    <circle cx="29" cy="17.5" r="1.8" fill="#4ade80"/>
+    <circle cx="29" cy="27.5" r="1.8" fill="#fbbf24"/>
+  </g>
+</svg>
