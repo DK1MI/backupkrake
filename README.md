@@ -23,22 +23,7 @@ Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a w
 
 ## Screenshots
 
-Overview of all configured hosts:
-
-![](screenshots/backupkrake-01.png)
-
-Monitoring of an active backup run:
-
-![](screenshots/backupkrake-02.png)
-
-Detail view of one host and its executed runs:
-
-![](screenshots/backupkrake-03.png)
-
-Overview of all runs so far:
-
-![](screenshots/backupkrake-04.png)
-
+![](screenshots/backupkrake-01.jpg)
 
 ## Deploy with Docker Compose
 
