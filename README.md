@@ -55,7 +55,7 @@ Create `docker-compose.yml`:
 ```yaml
 services:
   backupkrake:
-    image: ghcr.io/dk1mi/backupkrake:0.2.1     # or :latest to follow main
+    image: ghcr.io/dk1mi/backupkrake:0.3.0     # or :latest to follow main
     container_name: backupkrake
     restart: unless-stopped
     ports:
@@ -98,7 +98,7 @@ The container runs as root on purpose. Storing the clients' file ownership (uid/
 
 ```sh
 cd /opt/backupkrake
-# when pinned: change the version in docker-compose.yml first, e.g. 0.2.1 -> 0.3.0
+# when pinned: change the version in docker-compose.yml first, e.g. 0.3.0 -> 0.4.0
 docker compose pull
 docker compose up -d
 ```
@@ -109,7 +109,7 @@ Available image tags:
 
 | Tag | Meaning |
 |-----|---------|
-| `0.2.1`, `0.2` | Released versions (from `vX.Y.Z` git tags, e.g. `v0.2.1`). Recommended. |
+| `0.3.0`, `0.3` | Released versions (from `vX.Y.Z` git tags, e.g. `v0.3.0`). Recommended. |
 | `latest` | Current `main` branch |
 | `sha-<commit>` | A specific commit |
 
@@ -133,7 +133,7 @@ mkdir -p /opt/backupkrake && cd /opt/backupkrake
 docker run --rm \
   -e RESTIC_REPOSITORY='s3:https://…/bucket/backupkrake' -e RESTIC_PASSWORD='…' \
   -e AWS_ACCESS_KEY_ID='…' -e AWS_SECRET_ACCESS_KEY='…' \
-  -v "$PWD/config:/restore" --entrypoint restic ghcr.io/dk1mi/backupkrake:0.2.1 \
+  -v "$PWD/config:/restore" --entrypoint restic ghcr.io/dk1mi/backupkrake:0.3.0 \
   restore latest --host _backupkrake-config --target /restore
 
 # 3. start: hosts, schedules, keys and settings are back
