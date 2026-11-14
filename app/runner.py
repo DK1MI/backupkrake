@@ -101,8 +101,12 @@ class RunContext:
         uninterruptible: bool = False,
         progress=None,
         progress_log_every: float = 60.0,
+        line_filter=None,
     ) -> tuple[int, list[str]]:
         """Run a command, streaming output to the log. Returns (exit code, last lines).
+
+        ``line_filter(line) -> bool`` sees every output line; lines it returns True for
+        are consumed (neither logged nor returned), e.g. rsync's per-file itemize lines.
 
         Uninterruptible commands (e.g. a post-command that restarts a service) run
         even after a cancel/stop and are never terminated by one.
@@ -138,6 +142,8 @@ class RunContext:
                 if time.monotonic() - last_progress_log >= progress_log_every:
                     last_progress_log = time.monotonic()
                     self.log(progress.summary())
+                return
+            if line_filter is not None and line_filter(line):
                 return
             if line.strip():
                 lines.append(line)

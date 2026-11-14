@@ -15,6 +15,7 @@
     <a href="/" {% if request.url.path == '/' or request.url.path.startswith('/hosts') %}class="active"{% endif %}>Hosts</a>
     <a href="/runs" {% if request.url.path.startswith('/runs') %}class="active"{% endif %}>Runs</a>
     <a href="/offsite" {% if request.url.path.startswith('/offsite') %}class="active"{% endif %}>Offsite</a>
+    <a href="/verify" {% if request.url.path.startswith('/verify') %}class="active"{% endif %}>Verify</a>
     <a href="/notifications" {% if request.url.path.startswith('/notifications') %}class="active"{% endif %}>Notifications</a>
     <a href="/setup" {% if request.url.path.startswith('/setup') %}class="active"{% endif %}>Setup</a>
   </nav>

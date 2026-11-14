@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Verify · Backupkrake{% endblock %}
+{% block content %}
+<div class="pagehead">
+  <div>
+    <h1>Verify backups</h1>
+    <div class="sub">Checks that backups are complete and that the offsite copy can really be restored.</div>
+  </div>
+  {% if offsite_configured %}
+  <div class="buttons">
+    <form method="post" action="/verify/run"><button class="primary">Run restore test now</button></form>
+  </div>
+  {% endif %}
+</div>
+
+{% if errors %}
+<div class="flash error"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+<form method="post" class="form">
+  <fieldset class="card">
+    <legend>Plausibility check (after every backup)</legend>
+    <p class="sub">Compares each new snapshot with the previous successful backup of the host. A backup that
+      “succeeds” but is much smaller than usual, e.g. because a disk on the client didn't mount or a
+      container volume came up empty, is marked as a <strong>warning</strong> and always sends a notification.
+      An empty snapshot is flagged too.</p>
+    <div class="grid">
+      <label>Warn when files or data drop by
+        <span class="with-unit"><input name="drop_pct" type="number" min="0" max="100" value="{{ v.drop_pct }}"> %</span>
+        <small>0 = off. Ignored while the previous snapshot is tiny (under 100 files / 10 MiB).
+          After an intended change (paths removed, data deleted) the next backup compares with the new size.</small>
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>Content check against the client</legend>
+    <p class="sub">Compares the latest snapshot of a host with the client, reading <strong>every file on both
+      sides</strong> (<code>rsync --dry-run --checksum</code>, nothing is written). Normal backups only look at
+      size and modification time, so they never notice a file whose content changed silently, e.g. bit rot on
+      the backup disk or the client. Such files fail the check. Files that changed normally since the backup
+      are only counted. Takes about as long as a full backup; start it for a single host with
+      <strong>Verify against client</strong> on the host page.
+      {% if v.content_check_enabled and next_content %}Next run {{ next_content|dt }}.{% endif %}</p>
+    <div class="grid">
+      <label>Schedule (cron)
+        <input name="content_check_schedule" value="{{ v.content_check_schedule }}" placeholder="0 3 1 * *">
+        <small>Default: on the 1st of each month at 03:00. Runs for all hosts, honours each host's backup
+          window and never overlaps a backup of the same host.</small>
+      </label>
+      <label class="inline"><input type="checkbox" name="content_check_enabled" value="1" {% if v.content_check_enabled %}checked{% endif %}> Scheduled content checks enabled</label>
+    </div>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>Offsite restore test</legend>
+    {% if not offsite_configured %}
+    <p class="note">Configure the <a href="/offsite">offsite repository</a> first.</p>
+    {% endif %}
+    <p class="sub">Runs <code>restic check</code> and reads back a random part of the offsite data, so the whole
+      repository gets covered over time. Then it restores a few random files of every host from the
+      offsite copy and compares them byte for byte (SHA-256) with the local snapshot they were uploaded from.
+      Proves that the data, the password and the keys you have can actually bring files back.
+      {% if v.restore_test_enabled and next %}Next run {{ next|dt }}.{% endif %}</p>
+    <div class="grid">
+      <label>Schedule (cron)
+        <input name="restore_test_schedule" value="{{ v.restore_test_schedule }}" placeholder="0 6 * * 0">
+        <small>Default: Sundays 06:00. Pick a time when no offsite upload runs.</small>
+      </label>
+      <label class="inline"><input type="checkbox" name="restore_test_enabled" value="1" {% if v.restore_test_enabled %}checked{% endif %}> Scheduled restore tests enabled</label>
+    </div>
+    <div class="grid">
+      <label>Data read back per test
+        <span class="with-unit"><input name="read_data_pct" type="number" min="0" max="100" value="{{ v.read_data_pct }}"> %</span>
+        <small>Downloaded from the repository each time. 0 = check the structure only. With 5 % weekly, all data is read about every 5 months.</small>
+      </label>
+      <label>Files restored per host
+        <span class="with-unit"><input name="files_per_host" type="number" min="1" max="100" value="{{ v.files_per_host }}"> files</span>
+        <small>Random non-empty files, different each time.</small>
+      </label>
+    </div>
+  </fieldset>
+
+  <div class="buttons"><button class="primary">Save</button></div>
+</form>
+
+<h2>Recent content checks</h2>
+{% with runs=content_runs %}{% include "_runs_table.html" %}{% endwith %}
+
+<h2>Recent restore tests</h2>
+{% include "_runs_table.html" %}
+
+<h2>Backups flagged as incomplete</h2>
+{% with runs=flagged %}{% include "_runs_table.html" %}{% endwith %}
+{% endblock %}

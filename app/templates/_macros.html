@@ -3,6 +3,6 @@
 {%- endmacro %}
 
 {% macro run_kind(run) -%}
-{%- if run.kind in ('backup', 'restore') -%}{{ run.kind }}{% if run.host_name %} · {{ run.host_name }}{% endif %}
+{%- if run.kind in ('backup', 'restore', 'verify') -%}{{ run.kind }}{% if run.host_name %} · {{ run.host_name }}{% endif %}
 {%- else -%}{{ run.kind }}{%- endif -%}
 {%- endmacro %}

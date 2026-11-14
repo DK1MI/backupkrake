@@ -16,6 +16,7 @@ Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a w
 - **Backup windows & bandwidth limits**: per host, e.g. only between 22:00 and 06:00 at max 20 MiB/s; a backup still running when the window closes is stopped and resumes the next night.
 - **Retention**: keep the last N snapshots plus N daily, weekly and monthly ones, applied after every backup.
 - **Push-restore**: put files or folders from any snapshot back onto a client (staging dir, original location or another folder, even on another host), with a dry-run preview first.
+- **Backup verification**: every backup is compared with the previous one, and one that is suspiciously smaller (a disk that didn't mount, an empty volume) is flagged and reported. A content check compares a snapshot with the client file by file to find silent corruption. A scheduled offsite restore test reads back part of the restic repository and restores random files of every host, comparing them byte for byte with the local snapshots.
 - **Notifications**: ntfy and/or Pushover push messages when a backup fails or a host has had no successful backup for N days (optionally also warnings, offsite/restore failures, and "OK again"). An optional hourly heartbeat to healthchecks.io/Uptime Kuma covers the server itself being down.
 - **Web UI**: manage hosts, cron schedules, live logs with a progress bar (files checked, data transferred, speed, time left), run history and a snapshot browser with file and `.tar.gz` downloads.
 - **Encrypted offsite copy**: restic uploads the latest snapshot of every host to S3, B2, SFTP, a rest-server, etc., with its own retention policy and a restore option.
@@ -318,6 +319,18 @@ Only the latest local snapshot of each host is uploaded; restic keeps its own hi
 Unless disabled, each run also uploads Backupkrake's own configuration: a consistent copy of the database, the SSH keys, settings and logs, without the restic cache. It is stored under the restic host name `_backupkrake-config`, with the same retention. See [Disaster recovery](#4-disaster-recovery).
 
 **Store the restic password somewhere other than this server.**
+
+## Verifying backups
+
+A backup that finishes without errors isn't necessarily complete or intact. The **Verify** page has three checks:
+
+- **Plausibility check** (after every backup, on by default): the new snapshot's file count and total size are compared with the previous successful backup of that host. If either drops by 30 % or more (configurable, 0 = off), or the snapshot contains no data at all, the run is marked as a **warning** with an explanation such as *looks incomplete: 62 % fewer files (48,113 → 18,290) than the previous backup*. This always sends a notification, even when warnings are otherwise switched off. Typical causes: a disk or network share that wasn't mounted on the client, a container volume that came up empty, a renamed directory. The snapshot is kept, and the next backup compares with the new size, so an intended reduction is reported only once. Hosts whose previous snapshot is tiny (under 100 files / 10 MiB) are skipped.
+- **Content check against the client** (button **Verify against client** on a host's page, or scheduled for all hosts; off by default): runs `rsync --dry-run --checksum` from the client into the latest snapshot, which reads **every file on both sides** and compares the contents. Nothing is written. Normal backups decide by size and modification time, so they never notice a file whose content changed silently, e.g. bit rot on the backup disk or on the client. Files whose content differs although size and modification time are the same fail the check and are listed in the log (the check can't tell which side is wrong, so compare them by hand). Files that changed normally since the backup are only counted. The check takes about as long as a full backup but transfers almost nothing. Scheduled checks honour each host's backup window and never overlap a backup or restore of the same host.
+- **Offsite restore test** (manual, or scheduled; off by default): proves that the offsite copy can actually be restored with the password and keys you have.
+  1. `restic check --read-data-subset=5%` checks the repository structure and downloads and decrypts a random 5 % of the data (configurable), so the whole repository is read over time.
+  2. For every host, a few random non-empty files (5 by default) are read from the latest offsite snapshot with `restic dump` and compared byte for byte (SHA-256) with the local snapshot they were uploaded from. If that local snapshot has since been pruned, the files are only checked for readability and size.
+
+  The result is a run like any other (*offsite-verify*). A failed test is reported like a failed offsite backup. Schedule it when no offsite upload runs; only one restic job runs at a time.
 
 ## Notifications
 

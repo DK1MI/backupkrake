@@ -16,6 +16,7 @@ purpose**, because storing the clients' uid/gid needs it.
 | `app/backup.py` | rsync pull into `hosts/<name>/<YYYY-MM-DD_HHMMSS>.partial` → rename; `--link-dest` hardlinks; retention; path probing; `rsync_hint()` error explanations; backup-window watchdog |
 | `app/restore.py` | Push-restore with the separate restore key; staging/original/custom targets; dry runs |
 | `app/offsite.py` | restic upload of each host's latest snapshot + `/config` export; init/check/unlock/restore |
+| `app/verify.py` | Plausibility check after each backup (pure `plausibility()`, called from `backup._transfer`); content check against the client (`verify` run: dry-run `rsync --checksum` into the latest snapshot, `ItemCounter` parses itemize lines); offsite restore test (`restic check --read-data-subset` + `restic dump` of random files, SHA-256 against the local snapshot) |
 | `app/notify.py` | ntfy/Pushover delivery, run-finished hook, overdue-host check, heartbeat; hourly `housekeeping()` |
 | `app/runner.py` | Run rows + per-run log files, subprocess streaming, cancel/stop (`interrupted` vs `cancelled`), `finish_hooks` |
 | `app/scheduler.py` | Cron jobs per host, offsite job, hourly housekeeping job, `times_outside_window()` |
@@ -67,6 +68,13 @@ purpose**, because storing the clients' uid/gid needs it.
   `--parent`. Hardlinking bumps ctime, and the path differs per snapshot, so without these restic would
   re-read every file. `/config` goes up as restic host `_backupkrake-config`; host names can't start
   with `_`, so it can't collide. The DB is copied with SQLite's backup API, not the file.
+- **Verification:** a plausibility issue turns the backup into `warning` and is stored in
+  `stats["plausibility"]`; `notify.build_message` always reports those, independent of `on_warning`.
+  The restore test (`offsite-verify` run) holds `offsite._lock` and reads files with `restic dump`, not
+  `restore --include`, because include patterns would treat `*`/`[` in file names as globs.
+  The content check flags only files with `>fc........` (content differs, size and mtime equal);
+  other itemized changes are normal edits since the backup. Its itemize lines are consumed through
+  `exec(line_filter=…)` so they don't flood the log. It reuses `backup.window_guard()` and the host lock.
 - **Restore with `--delete`** passes the host's excludes so excluded paths (docker, caches) are
   protected, and deleting is refused for whole-snapshot restores.
 - **Static files:** reference them in templates as `{{ static('style.css') }}`, never as a plain

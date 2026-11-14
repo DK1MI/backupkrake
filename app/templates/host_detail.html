@@ -19,6 +19,10 @@
     <form method="post" action="/hosts/{{ host.id }}/backup"><button class="primary" {% if running %}disabled{% endif %}>{{ 'Running…' if running else 'Back up now' }}</button></form>
     {% endif %}
     <form method="post" action="/hosts/{{ host.id }}/test"><button>Test connection</button></form>
+    {% if snapshots and not current %}
+    <form method="post" action="/hosts/{{ host.id }}/verify" data-confirm="Compare the latest snapshot with {{ host.name }}? This reads every file on the client and on this server, so it takes about as long as a full backup.">
+      <button title="Reads every file on both sides and reports files whose content differs although size and modification time are the same (silent corruption).">Verify against client</button></form>
+    {% endif %}
     <a class="button" href="/hosts/{{ host.id }}/edit">Edit</a>
   </div>
 </div>

@@ -6,11 +6,13 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from . import backup, config, db, notify, offsite, windows
+from . import backup, config, db, notify, offsite, verify, windows
 
 log = logging.getLogger("backupkrake")
 _sched: AsyncIOScheduler | None = None
 OFFSITE_JOB = "offsite"
+VERIFY_JOB = "offsite-verify"
+CONTENT_JOB = "content-check"
 HOUSEKEEPING_JOB = "housekeeping"
 
 
@@ -31,6 +33,14 @@ async def _backup_job(host_id: int) -> None:
 
 async def _offsite_job() -> None:
     await offsite.run_offsite(trigger="schedule")
+
+
+async def _verify_job() -> None:
+    await verify.run_restore_test(trigger="schedule")
+
+
+async def _content_job() -> None:
+    await verify.run_all_content_checks(trigger="schedule")
 
 
 def start() -> None:
@@ -91,6 +101,31 @@ def sync_offsite() -> None:
         )
 
 
+def sync_verify() -> None:
+    if not _sched:
+        return
+    if _sched.get_job(VERIFY_JOB):
+        _sched.remove_job(VERIFY_JOB)
+    if _sched.get_job(CONTENT_JOB):
+        _sched.remove_job(CONTENT_JOB)
+    v = verify.get_settings()
+    if v["restore_test_enabled"] and offsite.configured() and v["restore_test_schedule"].strip():
+        _sched.add_job(
+            _verify_job, CronTrigger.from_crontab(v["restore_test_schedule"].strip()),
+            id=VERIFY_JOB, coalesce=True, max_instances=1, misfire_grace_time=3600,
+        )
+    if v["content_check_enabled"] and v["content_check_schedule"].strip():
+        _sched.add_job(
+            _content_job, CronTrigger.from_crontab(v["content_check_schedule"].strip()),
+            id=CONTENT_JOB, coalesce=True, max_instances=1, misfire_grace_time=3600,
+        )
+
+
+def next_verify(job_id: str = VERIFY_JOB) -> datetime | None:
+    job = _sched.get_job(job_id) if _sched else None
+    return job.next_run_time if job else None
+
+
 def sync_all() -> None:
     for host in db.list_hosts():
         try:
@@ -98,6 +133,7 @@ def sync_all() -> None:
         except ValueError as e:
             log.error("invalid schedule for %s: %s", host["name"], e)
     sync_offsite()
+    sync_verify()
 
 
 def times_outside_window(host: dict, count: int = 50) -> list[datetime]:

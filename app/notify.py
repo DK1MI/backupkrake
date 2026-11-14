@@ -145,7 +145,9 @@ def deliver(title: str, message: str, *, severity: str = "failure", click: str =
 
 # --- run hook --------------------------------------------------------------
 
-_LABEL = {"backup": "Backup", "offsite": "Offsite backup", "restore": "Restore"}
+_LABEL = {"backup": "Backup", "verify": "Content check", "offsite": "Offsite backup",
+          "offsite-verify": "Offsite restore test",
+          "restore": "Restore"}
 
 
 def _log_excerpt(run_id: int, max_lines: int = 6) -> str:
@@ -179,7 +181,7 @@ def build_message(run: dict, s: dict) -> tuple[str, str, str] | None:
     kind, status = run["kind"], run["status"]
     if kind not in _LABEL or status == "cancelled":
         return None
-    if kind == "offsite" and not s["on_offsite"]:
+    if kind in ("offsite", "offsite-verify") and not s["on_offsite"]:
         return None
     if kind == "restore" and not s["on_restore"]:
         return None
@@ -190,6 +192,9 @@ def build_message(run: dict, s: dict) -> tuple[str, str, str] | None:
 
     if status == "failed":
         severity, title = "failure", f"{label} failed{who}"
+    elif status == "warning" and (run.get("stats") or {}).get("plausibility"):
+        # Always reported: a backup that "succeeded" but looks incomplete is what the check is for.
+        severity, title = "warning", f"Backup looks incomplete{who}"
     elif status == "warning" and s["on_warning"]:
         severity, title = "warning", f"{label} finished with warnings{who}"
     elif status in ("success", "warning") and s["on_recovery"] and kind != "restore" \

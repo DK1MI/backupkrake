@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS hosts (
 );
 CREATE TABLE IF NOT EXISTS runs (
     id        INTEGER PRIMARY KEY,
-    kind      TEXT NOT NULL,             -- backup | offsite | offsite-init | offsite-check | test
+    kind      TEXT NOT NULL,             -- backup | restore | offsite | offsite-init | offsite-check | offsite-verify | offsite-restore
     host_id   INTEGER REFERENCES hosts(id) ON DELETE SET NULL,
     host_name TEXT,
     status    TEXT NOT NULL,             -- queued|running|success|warning|failed|cancelled|interrupted|skipped

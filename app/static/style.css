@@ -140,6 +140,7 @@ button.link:hover { color: var(--text); }
 .form fieldset > label:not(.inline):not(:last-child), .form fieldset > details:not(:last-child),
 .form fieldset > .checks:not(:last-child) { margin-bottom: .9rem; }
 .form fieldset > small:not(:last-child) { display: block; margin-bottom: .9rem; }
+.form fieldset > legend + p { margin-top: 0; }
 .form legend { font-weight: 600; padding: 0 .3rem; }
 label { display: flex; flex-direction: column; gap: .25rem; font-weight: 500; font-size: .92rem; }
 label small { font-weight: 400; }

@@ -14,7 +14,7 @@ import stat
 from datetime import datetime
 from pathlib import Path
 
-from . import config, db, progress, retention, runner, sshkeys, windows
+from . import config, db, progress, retention, runner, sshkeys, verify, windows
 
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$")
 SNAP_RE = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{6}$")
@@ -260,9 +260,25 @@ def _prepare_partial(hdir: Path, stamp: str, ctx: runner.RunContext) -> Path:
     return target
 
 
-async def _stop_at(ctx: runner.RunContext, end: datetime, window: str) -> None:
+async def _stop_at(ctx: runner.RunContext, end: datetime, window: str, note: str) -> None:
     await asyncio.sleep(max(0.0, (end - datetime.now().astimezone()).total_seconds()))
-    ctx.stop(f"backup window ({window}) ended at {end:%H:%M}; partial data kept, the next run resumes")
+    ctx.stop(f"backup window ({window}) ended at {end:%H:%M}{note}")
+
+
+def window_guard(host: dict, ctx: runner.RunContext, trigger: str,
+                 note: str = "; partial data kept, the next run resumes") -> tuple[bool, asyncio.Task | None]:
+    """Apply the host's backup window to a scheduled run: (False, None) after marking the
+    run skipped, or (True, watchdog task that stops the run when the window ends | None).
+    Windows restrict scheduled runs only; a manual start is an explicit request."""
+    if trigger != "schedule" or not host.get("backup_window", "").strip():
+        return True, None
+    window = windows.normalize(host["backup_window"])
+    allowed, end = windows.state(windows.parse(window), datetime.now().astimezone())
+    if not allowed:
+        ctx.finish("skipped", f"outside backup window ({window})")
+        return False, None
+    ctx.log(f"backup window {window}: must finish by {end:%Y-%m-%d %H:%M}")
+    return True, runner.spawn(_stop_at(ctx, end, window, note))
 
 
 async def run_backup(host_id: int, trigger: str = "manual") -> int | None:
@@ -277,15 +293,9 @@ async def run_backup(host_id: int, trigger: str = "manual") -> int | None:
         watchdog = None
         try:
             async with runner.semaphore():
-                # Windows restrict scheduled runs only; "Back up now" is an explicit request.
-                if trigger == "schedule" and host.get("backup_window", "").strip():
-                    window = windows.normalize(host["backup_window"])
-                    allowed, end = windows.state(windows.parse(window), datetime.now().astimezone())
-                    if not allowed:
-                        ctx.finish("skipped", f"outside backup window ({window})")
-                        return ctx.run_id
-                    ctx.log(f"backup window {window}: must finish by {end:%Y-%m-%d %H:%M}")
-                    watchdog = runner.spawn(_stop_at(ctx, end, window))
+                allowed, watchdog = window_guard(host, ctx, trigger)
+                if not allowed:
+                    return ctx.run_id
                 ctx.set_running()
                 await _do_backup(host, ctx)
         except runner.Cancelled:
@@ -376,6 +386,12 @@ async def _transfer(
     removed = apply_retention(host, ctx)
 
     status, notes = "success", []
+    issue = verify.plausibility(stats, (prev_ok or {}).get("stats"), float(verify.get_settings()["drop_pct"] or 0))
+    if issue:
+        status = "warning"
+        notes.append(issue)
+        stats["plausibility"] = issue
+        ctx.log(f"plausibility check: {issue}")
     if rc in WARNING_CODES:
         status = "warning"
         notes.append("some files vanished" if rc == 24 else "some files could not be read")

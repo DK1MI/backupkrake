@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import backup, browse, config, db, notify, offsite, restore, runner, scheduler, sshkeys, windows
+from . import backup, browse, config, db, notify, offsite, restore, runner, scheduler, sshkeys, verify, windows
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("backupkrake")
@@ -422,6 +422,21 @@ async def host_backup(request: Request, host_id: int):
     return redirect(f"/runs/{run['id']}" if run else f"/hosts/{host_id}")
 
 
+@app.post("/hosts/{host_id}/verify")
+async def host_verify(request: Request, host_id: int):
+    host = host_or_404(host_id)
+    if not backup.latest_snapshot(host["name"]):
+        flash(request, "There is no snapshot to compare with yet", "error")
+        return redirect(f"/hosts/{host_id}")
+    if backup.host_lock(host_id).locked():
+        flash(request, "A backup, restore or check for this host is already running", "error")
+        return redirect(f"/hosts/{host_id}")
+    runner.spawn(verify.run_content_check(host_id, trigger="manual"))
+    await asyncio.sleep(0.2)
+    run = db.last_run(host_id, kind=verify.CONTENT_KIND)
+    return redirect(f"/runs/{run['id']}" if run else f"/hosts/{host_id}")
+
+
 @app.post("/hosts/{host_id}/test", response_class=HTMLResponse)
 async def host_test(request: Request, host_id: int):
     host = host_or_404(host_id)
@@ -676,6 +691,7 @@ async def offsite_save(request: Request):
                       offsite_pubkey=sshkeys.offsite_public_key(), sftp=offsite.is_sftp(s))
     offsite.save_settings(s)
     scheduler.sync_offsite()
+    scheduler.sync_verify()
     flash(request, "Offsite settings saved")
     return redirect("/offsite")
 
@@ -688,6 +704,58 @@ async def _offsite_action(request: Request, coro) -> RedirectResponse:
         return redirect("/offsite")
     run = db.one("SELECT id FROM runs WHERE kind LIKE 'offsite%' ORDER BY id DESC LIMIT 1")
     return redirect(f"/runs/{run['id']}" if run else "/offsite")
+
+
+# --- verify --------------------------------------------------------------------
+
+def _verify_page(request: Request, v: dict, errors: list[str]) -> HTMLResponse:
+    runs = db.list_runs(kind=verify.KIND, limit=10)
+    content_runs = db.list_runs(kind=verify.CONTENT_KIND, limit=10)
+    flagged = [r for r in db.list_runs(kind="backup", limit=500) if r["stats"].get("plausibility")][:10]
+    return render(request, "verify.html", v=v, errors=errors, runs=runs, flagged=flagged,
+                  content_runs=content_runs, offsite_configured=offsite.configured(),
+                  next=scheduler.next_verify(), next_content=scheduler.next_verify(scheduler.CONTENT_JOB))
+
+
+@app.get("/verify", response_class=HTMLResponse)
+async def verify_page(request: Request):
+    return _verify_page(request, verify.get_settings(), [])
+
+
+@app.post("/verify")
+async def verify_save(request: Request):
+    form = await request.form()
+    v = verify.get_settings()
+    errors = []
+    limits = {"drop_pct": (0, 100), "read_data_pct": (0, 100), "files_per_host": (1, 100)}
+    for k, (lo, hi) in limits.items():
+        try:
+            val = int(form.get(k) or 0)
+        except ValueError:
+            errors.append(f"{k.replace('_', ' ')} must be a number")
+            continue
+        if not lo <= val <= hi:
+            errors.append(f"{k.replace('_', ' ')} must be between {lo} and {hi}")
+        v[k] = val
+    v["restore_test_enabled"] = bool(form.get("restore_test_enabled"))
+    v["restore_test_schedule"] = str(form.get("restore_test_schedule", "")).strip()
+    if err := scheduler.validate_cron(v["restore_test_schedule"]):
+        errors.append(f"Restore test schedule: {err}")
+    v["content_check_enabled"] = bool(form.get("content_check_enabled"))
+    v["content_check_schedule"] = str(form.get("content_check_schedule", "")).strip()
+    if err := scheduler.validate_cron(v["content_check_schedule"]):
+        errors.append(f"Content check schedule: {err}")
+    if errors:
+        return _verify_page(request, v, errors)
+    verify.save_settings(v)
+    scheduler.sync_verify()
+    flash(request, "Verification settings saved")
+    return redirect("/verify")
+
+
+@app.post("/verify/run")
+async def verify_run(request: Request):
+    return await _offsite_action(request, verify.run_restore_test("manual"))
 
 
 @app.post("/offsite/run")
