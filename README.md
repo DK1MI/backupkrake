@@ -266,6 +266,10 @@ du -sh /data/hosts/web1/2026-11-13_030000    # the snapshot's apparent full size
 du -shc /data/hosts/web1/*/ | tail -n 20     # first snapshot full, later ones only what's new
 ```
 
+### Disk usage per host
+
+Each host's page shows a **Disk usage** card: the size of the latest snapshot, how much data the backups added in the last 30 days and on average, and a bar chart of the new data each backup wrote (hover a bar for details, or open the table). The figure comes from rsync's statistics, which count exactly the files that had to be stored again; unchanged files are hard links and cost nothing. The first, full backup would dwarf the daily ones, so the chart is scaled to the incremental backups and full copies are drawn grey, capped and labelled with their size.
+
 ### Limits of hard-link deduplication
 
 - **Whole files only.** A changed file is stored again in full. A 20 GB VM image or database file that changes daily costs 20 GB per kept snapshot. Exclude such files and back them up another way, for example with a dump in a pre-command, or keep fewer snapshots for that host.

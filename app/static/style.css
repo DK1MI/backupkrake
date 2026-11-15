@@ -231,3 +231,19 @@ code.copyable { word-break: break-all; }
 @keyframes progress-slide { from { left: -30%; } to { left: 100%; } }
 .progress .sub { margin-top: .45rem; font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) { .progress.indeterminate .progress-fill { animation: none; left: 0; width: 100%; opacity: .35; } }
+
+/* Disk usage card on the host page */
+.usage-figures { display: flex; flex-wrap: wrap; gap: .8rem 2.5rem; margin-bottom: 1rem; }
+.usage-figures > div { display: flex; flex-direction: column; }
+.usage-figures .label { color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
+.usage-figures strong { font-size: 1.35rem; }
+.chart-title { margin: 0 0 .3rem; font-weight: 600; font-size: .92rem; }
+.usage-chart { display: block; width: 100%; height: auto; max-height: 260px; }
+.usage-chart .grid { stroke: var(--border); stroke-width: 1; }
+.usage-chart .grid.baseline { stroke: var(--muted); }
+.usage-chart .axis { fill: var(--muted); font-size: 11px; }
+.usage-chart .bar path { fill: var(--accent); }
+.usage-chart .bar.full path { fill: var(--muted); }
+.usage-chart .bar .hit { fill: transparent; }
+.usage-chart .bar:hover .hit { fill: var(--code-bg); }
+.usage .hint { margin-top: .8rem; }

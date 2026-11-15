@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import backup, browse, config, db, notify, offsite, restore, runner, scheduler, sshkeys, verify, windows
+from . import backup, browse, config, db, notify, offsite, restore, runner, scheduler, sshkeys, usage, verify, windows
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("backupkrake")
@@ -359,7 +359,10 @@ async def host_detail(request: Request, host_id: int):
     meta = db.snapshot_meta(host_id)
     snapshots = [{"name": s, "run": by_snap.get(s), **meta.get(s, {"pinned": False, "note": ""})}
                  for s in snaps]
+    history = usage.backup_history(host_id)
     return render(request, "host_detail.html", host=host, snapshots=snapshots, runs=runs,
+                  usage_chart=usage.chart(history), usage_summary=usage.summary(history),
+                  usage_history=list(reversed(history)),
                   next=scheduler.next_run(host_id), running=backup.host_lock(host_id).locked(),
                   current=_current_run(host_id))
 

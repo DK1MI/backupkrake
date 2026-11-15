@@ -78,6 +78,47 @@
 <p class="muted">No snapshots yet.</p>
 {% endif %}
 
+{% if usage_chart %}
+<h2>Disk usage</h2>
+<div class="card usage">
+  <div class="usage-figures">
+    <div><span class="label">Latest snapshot</span><strong>{{ usage_summary.latest_total|bytes }}</strong></div>
+    <div><span class="label">Added in the last 30 days</span><strong>{{ usage_summary.added_30d|bytes }}</strong>
+      <small>{{ usage_summary.runs_30d }} backup{{ '' if usage_summary.runs_30d == 1 else 's' }}, full copies not counted</small></div>
+    <div><span class="label">Average per backup</span><strong>{{ usage_summary.avg_added|bytes if usage_summary.avg_added is not none else '–' }}</strong></div>
+  </div>
+  <p class="chart-title">New data per backup <small>(unchanged files are hard links and take no extra space)</small></p>
+  <svg class="usage-chart" viewBox="0 0 {{ usage_chart.w }} {{ usage_chart.h }}" role="img"
+       aria-label="Bar chart: new data written by each of the last {{ usage_chart.bars|length }} backups">
+    {% for t in usage_chart.ticks %}
+    <line class="grid{% if loop.first %} baseline{% endif %}" x1="{{ usage_chart.left }}" x2="{{ usage_chart.right }}" y1="{{ t.y }}" y2="{{ t.y }}"/>
+    <text class="axis" x="{{ usage_chart.left - 8 }}" y="{{ t.y + 4 }}" text-anchor="end">{{ t.label }}</text>
+    {% endfor %}
+    {% for b in usage_chart.bars %}
+    <g class="bar{% if b.full %} full{% endif %}">
+      <title>{{ b.tip }}</title>
+      <rect class="hit" x="{{ b.hit_x }}" y="0" width="{{ b.hit_w }}" height="{{ usage_chart.base }}"/>
+      {% if b.path %}<path d="{{ b.path }}"/>{% endif %}
+      {% if b.label %}<text class="axis" x="{{ b.label.x }}" y="{{ b.label.y }}" text-anchor="{{ b.label.anchor }}">{{ b.label.text }}</text>{% endif %}
+    </g>
+    {% endfor %}
+    {% for l in usage_chart.xlabels %}
+    <text class="axis" x="{{ l.x }}" y="{{ usage_chart.h - 6 }}" text-anchor="{{ l.anchor }}">{{ l.text }}</text>
+    {% endfor %}
+  </svg>
+  <details class="hint">
+    <summary>Show as table</summary>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Backup</th><th>New data</th><th>Snapshot size</th><th></th></tr></thead>
+      <tbody>{% for h in usage_history %}
+        <tr><td><a href="/runs/{{ h.run_id }}">{{ h.date|dt }}</a></td><td>{{ h.added|bytes }}</td><td>{{ h.total|bytes }}</td>
+          <td>{% if h.full %}<span class="tag">full copy</span>{% endif %}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  </details>
+</div>
+{% endif %}
+
 <h2>Recent runs</h2>
 {% include "_runs_table.html" %}
 
