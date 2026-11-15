@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}{{ host.name }} · Find a file{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="/">Hosts</a> / <a href="/hosts/{{ host.id }}">{{ host.name }}</a> /</div>
+<div class="pagehead">
+  <div>
+    <h1>Find a file</h1>
+    <div class="sub">Searches every snapshot of {{ host.name }} and lists each version of a file once, with the snapshots that contain it.</div>
+  </div>
+</div>
+
+<form method="get" class="form card search-form">
+  <div class="grid">
+    <label>Name or pattern
+      <input name="q" value="{{ q }}" placeholder="e.g. invoice, *.pdf, nginx/*.conf" autofocus>
+      <small>Part of the name, or a pattern with <code>*</code> and <code>?</code>. Include a <code>/</code> to match the
+        path, e.g. <code>etc/nginx/*.conf</code>. Not case-sensitive.</small>
+    </label>
+    <label>Only in folder
+      <input name="within" value="{{ within }}" placeholder="whole snapshot, e.g. home/alice">
+      <small>Optional. Makes searching large hosts much faster.</small>
+    </label>
+  </div>
+  <div class="buttons"><button class="primary">Search</button></div>
+</form>
+
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+
+{% if result %}
+<p class="sub">
+  {{ result.results|length }} matching path{{ '' if result.results|length == 1 else 's' }}
+  in {{ result.searched }} of {{ result.snapshots }} snapshot{{ '' if result.snapshots == 1 else 's' }}.
+  {% if result.truncated %}<strong class="text-warn">Search incomplete: {{ result.truncated }}.</strong>{% endif %}
+</p>
+{% for r in result.results %}
+<div class="card search-hit">
+  <div class="search-path">
+    {% if r.kind == 'dir' %}📁 {% endif %}<code>{{ r.path }}</code>
+    <span class="sub">· {{ r.versions|length }} version{{ '' if r.versions|length == 1 else 's' }}</span>
+  </div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Modified</th><th>Size</th><th>In snapshots</th><th></th></tr></thead>
+    <tbody>
+    {% for v in r.versions %}
+      {% set parent = r.path.rsplit('/', 1)[0] if '/' in r.path else '' %}
+      <tr>
+        <td>{{ v.mtime.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>{{ v.size|bytes if r.kind != 'dir' else '' }}</td>
+        <td>{% if v.count == 1 %}{{ v.newest|snap }}{% else %}{{ v.oldest|snap }} … {{ v.newest|snap }} <span class="sub">({{ v.count }})</span>{% endif %}</td>
+        <td class="actions">
+          <a class="button small" href="/hosts/{{ host.id }}/browse/{{ v.newest }}?path={{ (r.path if r.kind == 'dir' else parent)|urlencode }}">Browse</a>
+          {% if r.kind in ('file', 'dir') %}<a class="button small" href="/hosts/{{ host.id }}/download/{{ v.newest }}?path={{ r.path|urlencode }}">Download</a>{% endif %}
+          <a class="button small" href="/hosts/{{ host.id }}/restore/{{ v.newest }}?path={{ r.path|urlencode }}">Restore…</a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% else %}
+<p class="muted">Nothing found.</p>
+{% endfor %}
+{% endif %}
+{% endblock %}

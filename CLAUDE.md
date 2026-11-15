@@ -25,6 +25,7 @@ purpose**, because storing the clients' uid/gid needs it.
 | `app/progress.py` | Parses rsync `--info=progress2` / restic progress lines into live progress state |
 | `app/windows.py` | Backup-window parsing and maths (pure functions) |
 | `app/retention.py` | GFS keep selection (pure function) |
+| `app/search.py` | Find files across a host's snapshots; versions = distinct inodes (hard links), lstat-only walk with result/time limits |
 | `app/browse.py` | Snapshot browsing/downloads; walks paths with `lstat`, never follows symlinks |
 | `app/sshkeys.py` | Server keys, `authorized_keys` lines, ssh options, remote specs |
 | `app/db.py` | SQLite schema, `MIGRATIONS` list (ALTER TABLE ADD COLUMN on startup), settings store (JSON values) |
@@ -132,8 +133,7 @@ bump it when releasing.
 1. ~~**Retry / catch-up for hosts that are off**~~ – done (v0.5).
 2. ~~**Disk space alerts and forecast**~~ – done (v0.4).
 3. ~~**Pinned snapshots**~~ – done (v0.4).
-4. **Find a file across snapshots:** search by name/glob over a host's snapshots and list every
-   version (snapshot, date, size) with links to browse/download/restore.
+4. ~~**Find a file across snapshots**~~ – done (v0.6).
 5. ~~**Presets for consistent database/container backups**~~ – done (v0.5).
 6. **Second offsite target and per-host offsite selection:** e.g. USB disk/NAS in addition to the
    cloud (3-2-1); choose which hosts go offsite; offsite backup windows.

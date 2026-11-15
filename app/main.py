@@ -17,8 +17,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import (backup, browse, config, db, notify, offsite, presets, restore, runner, scheduler, sshkeys,
-               usage, verify, windows)
+from . import (backup, browse, config, db, notify, offsite, presets, restore, runner, scheduler, search,
+               sshkeys, usage, verify, windows)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("backupkrake")
@@ -522,6 +522,18 @@ async def snapshot_browse(request: Request, host_id: int, snap: str, path: str =
     entries = await asyncio.to_thread(browse.listdir, target)
     return render(request, "browse.html", host=host, snap=snap, rel=rel, parts=parts,
                   entries=entries, file=None, snaps=backup.list_snapshots(host["name"]))
+
+
+@app.get("/hosts/{host_id}/search", response_class=HTMLResponse)
+async def snapshot_search(request: Request, host_id: int, q: str = "", within: str = ""):
+    host = host_or_404(host_id)
+    result, error = None, None
+    if q.strip():
+        try:
+            result = await asyncio.to_thread(search.search, host["name"], q, within)
+        except browse.UnsafePath as e:
+            error = str(e)
+    return render(request, "search.html", host=host, q=q, within=within, result=result, error=error)
 
 
 @app.get("/hosts/{host_id}/download/{snap}")

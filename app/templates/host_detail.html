@@ -27,7 +27,15 @@
   </div>
 </div>
 
-<h2>Snapshots</h2>
+<div class="section-head">
+  <h2>Snapshots</h2>
+  {% if snapshots %}
+  <form method="get" action="/hosts/{{ host.id }}/search" class="inline-search">
+    <input name="q" placeholder="Find a file in all snapshots…" aria-label="Find a file in all snapshots">
+    <button class="small">Find</button>
+  </form>
+  {% endif %}
+</div>
 {% if snapshots %}
 <div class="tablewrap">
 <table>

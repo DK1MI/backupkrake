@@ -314,6 +314,7 @@ restic, used for offsite copies, doesn't use hard links. It splits files into co
 
   The target can be any host, e.g. to move data to a replacement machine. Options: keep `*.bkrestore-<time>` copies of overwritten or deleted files (on by default), and *delete files not in the snapshot* to make a folder an exact copy. Paths excluded from backups are never deleted, and deleting isn't allowed for whole-snapshot restores.
   **Preview (dry run)** lists every change without writing anything; the preview's result page has a button to run the same restore for real.
+- **Find a file**: on a host's page, search all its snapshots by name (`report`), pattern (`*.pdf`) or path (`nginx/*.conf`), optionally within one folder. Each version of a file is listed once, with the snapshots that contain it (*2026-11-03 … 2026-11-09 (7)*), because snapshots that share a file through a hard link hold the same version. Every version links to browse, download and restore. Very large hosts: narrow the search to a folder; a search stops after 30 seconds or 200 matching paths.
 - **Download**: browse a snapshot and download a file or a `.tar.gz` of a folder. A snapshot selector shows the same path in older snapshots.
 - **Bulk restore from the Docker host**: snapshots are plain directories:
   ```sh
