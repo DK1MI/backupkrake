@@ -17,7 +17,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import backup, browse, config, db, notify, offsite, restore, runner, scheduler, sshkeys, usage, verify, windows
+from . import (backup, browse, config, db, notify, offsite, presets, restore, runner, scheduler, sshkeys,
+               usage, verify, windows)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("backupkrake")
@@ -328,7 +329,8 @@ def _host_form(request: Request, host: dict, is_new: bool, errors: list[str]) ->
                     "restore": sshkeys.restore_authorized_keys_line(scope)}
             for scope in ("system", "home")}
     return render(request, "host_form.html", host=host, is_new=is_new, errors=errors,
-                  keys=keys, presets=SCOPE_PRESETS)
+                  keys=keys, presets=SCOPE_PRESETS,
+                  dump_presets={s: presets.presets(s) for s in ("system", "home")})
 
 
 @app.get("/hosts/new", response_class=HTMLResponse)

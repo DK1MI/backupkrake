@@ -209,6 +209,21 @@ Each host can have a **backup window** like `22:00-06:00` (may cross midnight; s
 - The bandwidth limit applies to backups from and restores to that host.
 - The post-command always runs once the pre-command has run, even if the backup is cancelled, interrupted or fails.
 
+### Databases and containers
+
+Copying the files of a running database can give a backup that won't restore. A dump made by the database itself is always consistent. In the host form, **Advanced → Database and container presets** fills in a tested pre-command and adds the dump folder (`/var/backups/backupkrake`, or `~/.backupkrake-dumps` for home-folder hosts) to the paths:
+
+| Preset | What it does |
+|---|---|
+| PostgreSQL | `pg_dumpall` as the postgres user → `postgresql.sql.gz` |
+| MySQL / MariaDB | `mariadb-dump`/`mysqldump --all-databases --single-transaction` via root's socket login → `mysql.sql.gz` |
+| SQLite | `sqlite3 FILE ".backup …"`, an online copy that's safe while the app writes |
+| Docker: PostgreSQL / MySQL / MariaDB container | the same dumps through `docker exec` |
+| Docker: all named volumes | each volume as a `.tar.gz` (Docker's own storage is excluded by default) |
+| Docker Compose: stop the project | `docker compose stop` before and `start` after the backup, for apps without a dump tool |
+
+Presets can be combined. Each command runs in its own `( set -e; … )` block, so a failing dump fails the pre-command and aborts the backup instead of backing up an old or half-written file. Replace the CAPITALISED placeholders (database file, container name, project folder) with your values. Pre/post-commands need the unrestricted key on the client; the read-only `rrsync` key only allows rsync.
+
 ### Laptops and desktops that aren't always on
 
 Set **If the host is unreachable, retry every … minutes** (e.g. 30) in the host's schedule settings. A scheduled backup that finds the machine switched off, asleep or out of the network is then recorded as **skipped** (*host unreachable; retrying at 14:30*) and retried until it succeeds, the next scheduled backup is due, or the backup window ends. The host page shows the pending retry. These attempts don't send failure notifications; the overdue alert still tells you when a machine hasn't been backed up for days. Only real "not there" errors count (no route, timeout, connection refused, unknown host); an SSH key that isn't accepted is still a failure. Without the setting, or for "Back up now", an unreachable host is an ordinary failed backup.

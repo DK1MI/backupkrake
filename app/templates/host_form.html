@@ -120,14 +120,28 @@
   <details class="card advanced" {% if host.pre_cmd or host.post_cmd or host.extra_args %}open{% endif %}>
     <summary>Advanced</summary>
     <div class="grid">
+      <label>Database and container presets
+        <select id="dump-preset">
+          <option value="">Add a preset…</option>
+          {% for p in dump_presets.system %}<option value="{{ p.id }}">{{ p.label }}</option>{% endfor %}
+        </select>
+        <small>Fills in a pre-command that makes a consistent dump before each backup and adds the dump folder
+          to the paths. Choose several to combine them. Copying the files of a running database can give a
+          backup that won't restore.</small>
+      </label>
+    </div>
+    <p class="note preset-note" id="preset-note" hidden></p>
+    <div class="grid two">
       <label>Pre-backup command
-        <input name="pre_cmd" value="{{ host.pre_cmd }}" placeholder="pg_dumpall -U postgres > /var/backups/pg.sql">
+        <textarea name="pre_cmd" rows="4" placeholder="e.g. choose a preset above">{{ host.pre_cmd }}</textarea>
         <small>Runs on the client via SSH, e.g. a database dump. A failure aborts the backup.</small>
       </label>
       <label>Post-backup command
-        <input name="post_cmd" value="{{ host.post_cmd }}">
+        <textarea name="post_cmd" rows="4">{{ host.post_cmd }}</textarea>
         <small>Runs after rsync, even if it failed.</small>
       </label>
+    </div>
+    <div class="grid">
       <label>Extra rsync arguments
         <input name="extra_args" value="{{ host.extra_args }}" placeholder="--bwlimit=20M">
       </label>
@@ -156,7 +170,41 @@
       if (el.value.trim() === String(from[name]).trim() || el.value.trim() === "") el.value = to[name];
     }
     field("acls_xattrs").checked = !!to.acls_xattrs;
+    syncPresets();
   }));
+
+  // Database/container presets: append the commands and the dump folder.
+  const dumpPresets = {{ dump_presets|tojson }};
+  const select = document.getElementById("dump-preset");
+  const note = document.getElementById("preset-note");
+  const scope = () => (form.querySelector("input[name=scope]:checked") || {}).value === "home" ? "home" : "system";
+  function syncPresets() {
+    for (const p of dumpPresets[scope()]) {
+      const opt = select.querySelector(`option[value="${p.id}"]`);
+      opt.disabled = !p.available;
+      opt.textContent = p.label + (p.available ? "" : " (needs a whole-system host)");
+    }
+  }
+  const append = (name, cmd) => {
+    if (!cmd) return;
+    const el = field(name), cur = el.value.trim();
+    if (!cur.includes(cmd)) el.value = cur ? `${cur} && ${cmd}` : cmd;
+  };
+  select.addEventListener("change", () => {
+    const p = dumpPresets[scope()].find((x) => x.id === select.value);
+    select.value = "";
+    if (!p || !p.available) return;
+    append("pre_cmd", p.pre);
+    append("post_cmd", p.post);
+    // Add the dump folder unless a configured path already contains it (e.g. /var, or "." at home).
+    const paths = field("paths");
+    const covered = paths.value.split("\n").map((l) => l.trim().replace(/\/+$/, "")).filter(Boolean)
+      .some((l) => l === p.path || l === "." || p.path.startsWith(l === "" ? "/" : l + "/"));
+    if (!covered) paths.value = paths.value.replace(/\s*$/, "") + "\n" + p.path;
+    note.hidden = false;
+    note.textContent = `Added “${p.label}”: ${p.note} Pre/post commands need the unrestricted key (see below).`;
+  });
+  syncPresets();
 })();
 </script>
 {% endblock %}

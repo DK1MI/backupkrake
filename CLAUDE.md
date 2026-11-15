@@ -18,6 +18,7 @@ purpose**, because storing the clients' uid/gid needs it.
 | `app/offsite.py` | restic upload of each host's latest snapshot + `/config` export; init/check/unlock/restore |
 | `app/verify.py` | Plausibility check after each backup (pure `plausibility()`, called from `backup._transfer`); content check against the client (`verify` run: dry-run `rsync --checksum` into the latest snapshot, `ItemCounter` parses itemize lines); offsite restore test (`restic check --read-data-subset` + `restic dump` of random files, SHA-256 against the local snapshot) |
 | `app/usage.py` | Per-host storage figures from runs' rsync stats (`transferred_size` = new data thanks to `--link-dest`); server-rendered SVG bar-chart geometry, full copies capped; hourly `/data` samples (`disk_samples` table) and the least-squares fill-up forecast |
+| `app/presets.py` | Database/container pre-command presets for the host form; each is a `( set -e; … )` block so they combine with `&&` and a failed dump aborts the backup |
 | `app/notify.py` | ntfy/Pushover delivery, run-finished hook, overdue-host check, heartbeat; hourly `housekeeping()` |
 | `app/runner.py` | Run rows + per-run log files, subprocess streaming, cancel/stop (`interrupted` vs `cancelled`), `finish_hooks` |
 | `app/scheduler.py` | Cron jobs per host, offsite job, hourly housekeeping job, `times_outside_window()` |
@@ -133,8 +134,7 @@ bump it when releasing.
 3. ~~**Pinned snapshots**~~ – done (v0.4).
 4. **Find a file across snapshots:** search by name/glob over a host's snapshots and list every
    version (snapshot, date, size) with links to browse/download/restore.
-5. **Presets for consistent database/container backups:** ready-made pre-commands for PostgreSQL,
-   MySQL/MariaDB, SQLite and Docker volumes (dumps the backup then includes).
+5. ~~**Presets for consistent database/container backups**~~ – done (v0.5).
 6. **Second offsite target and per-host offsite selection:** e.g. USB disk/NAS in addition to the
    cloud (3-2-1); choose which hosts go offsite; offsite backup windows.
 7. ~~**Per-host disk usage chart**~~ – done (v0.4).
