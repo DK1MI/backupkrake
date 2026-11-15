@@ -115,4 +115,23 @@ bump it when releasing.
 - The page JavaScript (scope switching in `host_form.html`, the restore form's target toggle, and
   `renderProgress` in `app.js`) has no automated tests. `renderProgress` was checked manually in
   headless Chrome.
-- Ideas not started: notifications by email; per-time-of-day bandwidth limits; offsite backup windows.
+
+## Next up (agreed 2026-11-15, implement in the next session)
+
+1. **Retry / catch-up for hosts that are off:** when a scheduled backup fails because the host is
+   unreachable, retry every 15–30 min until one succeeds (bounded, e.g. until the next scheduled run),
+   or start as soon as the host is reachable again. Aimed at laptops/desktops.
+2. **Disk space alerts and forecast:** track per-host growth, warn (notification) before `/data` runs
+   full, and estimate when it will be full at the current rate.
+3. **Pinned snapshots:** "keep forever" flag (plus optional note) that retention never prunes, e.g.
+   "before OS upgrade".
+4. **Find a file across snapshots:** search by name/glob over a host's snapshots and list every
+   version (snapshot, date, size) with links to browse/download/restore.
+5. **Presets for consistent database/container backups:** ready-made pre-commands for PostgreSQL,
+   MySQL/MariaDB, SQLite and Docker volumes (dumps the backup then includes).
+6. **Second offsite target and per-host offsite selection:** e.g. USB disk/NAS in addition to the
+   cloud (3-2-1); choose which hosts go offsite; offsite backup windows.
+7. **Per-host disk usage chart:** how much each snapshot added (new data), shown on the host page.
+
+Not chosen for now: Wake-on-LAN/shutdown, email notifications, Prometheus `/metrics`, duplicating
+hosts, JSON import/export of host settings, per-time-of-day bandwidth limits.
