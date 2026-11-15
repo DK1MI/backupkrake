@@ -238,7 +238,7 @@ DEFAULT_HOST = {
     "schedule": "0 2 * * *", "enabled": 1, "one_file_system": 0, "acls_xattrs": 1,
     "pre_cmd": "", "post_cmd": "", "extra_args": "",
     "keep_last": 3, "keep_daily": 7, "keep_weekly": 4, "keep_monthly": 12,
-    "max_age_days": None, "bwlimit": "", "backup_window": "", "scope": "system",
+    "max_age_days": None, "bwlimit": "", "backup_window": "", "scope": "system", "retry_minutes": 0,
 }
 
 # Non-root account on a shared system: paths are relative to the user's home folder.
@@ -267,9 +267,10 @@ def parse_host_form(form) -> tuple[dict, list[str]]:
         data[f] = 1 if form.get(f) else 0
     data["scope"] = "home" if form.get("scope") == "home" else "system"
     for f, lo, hi in (("port", 1, 65535), ("keep_last", 1, 1000), ("keep_daily", 0, 1000),
-                      ("keep_weekly", 0, 1000), ("keep_monthly", 0, 1000)):
+                      ("keep_weekly", 0, 1000), ("keep_monthly", 0, 1000), ("retry_minutes", 0, 1440)):
         try:
-            data[f] = int(form.get(f, ""))
+            raw = form.get(f, "")
+            data[f] = int(raw) if raw != "" or f != "retry_minutes" else 0
             if not lo <= data[f] <= hi:
                 raise ValueError
         except ValueError:
@@ -364,7 +365,8 @@ async def host_detail(request: Request, host_id: int):
     return render(request, "host_detail.html", host=host, snapshots=snapshots, runs=runs,
                   usage_chart=usage.chart(history), usage_summary=usage.summary(history),
                   usage_history=list(reversed(history)),
-                  next=scheduler.next_run(host_id), running=backup.host_lock(host_id).locked(),
+                  next=scheduler.next_run(host_id), next_retry=scheduler.next_retry(host_id),
+                  running=backup.host_lock(host_id).locked(),
                   current=_current_run(host_id))
 
 

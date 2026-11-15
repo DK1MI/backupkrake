@@ -93,6 +93,15 @@
         <small>Per second: <code>20M</code> = 20 MiB/s, <code>500K</code> or <code>500</code> = 500 KiB/s. Also used for restores to this host.</small>
       </label>
     </div>
+    <div class="grid">
+      <label>If the host is unreachable, retry every
+        <span class="with-unit"><input name="retry_minutes" type="number" min="0" max="1440" value="{{ host.retry_minutes }}" placeholder="0"> minutes</span>
+        <small>For laptops and desktops that aren't always on, e.g. 30. A scheduled backup that finds the host
+          switched off is retried until it succeeds, the next scheduled backup is due or the backup window ends.
+          These attempts are recorded as <em>skipped</em> and send no failure notification; the overdue alert
+          still reports a host that stays offline. 0 = off: an unreachable host is a failed backup.</small>
+      </label>
+    </div>
     <div class="grid four">
       <label>Keep last <input name="keep_last" type="number" min="1" value="{{ host.keep_last }}"></label>
       <label>Keep daily <input name="keep_daily" type="number" min="0" value="{{ host.keep_daily }}"></label>

@@ -209,6 +209,10 @@ Each host can have a **backup window** like `22:00-06:00` (may cross midnight; s
 - The bandwidth limit applies to backups from and restores to that host.
 - The post-command always runs once the pre-command has run, even if the backup is cancelled, interrupted or fails.
 
+### Laptops and desktops that aren't always on
+
+Set **If the host is unreachable, retry every … minutes** (e.g. 30) in the host's schedule settings. A scheduled backup that finds the machine switched off, asleep or out of the network is then recorded as **skipped** (*host unreachable; retrying at 14:30*) and retried until it succeeds, the next scheduled backup is due, or the backup window ends. The host page shows the pending retry. These attempts don't send failure notifications; the overdue alert still tells you when a machine hasn't been backed up for days. Only real "not there" errors count (no route, timeout, connection refused, unknown host); an SSH key that isn't accepted is still a failure. Without the setting, or for "Back up now", an unreachable host is an ordinary failed backup.
+
 Interrupted and skipped runs don't send failure notifications. If a host never manages to finish inside its window, the overdue alert reports it.
 
 Configured paths that don't exist on a client (e.g. `/srv`) are skipped and noted in the run summary.

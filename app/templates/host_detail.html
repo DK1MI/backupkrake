@@ -7,7 +7,7 @@
     <div class="crumbs"><a href="/">Hosts</a> /</div>
     <h1>{{ host.name }}</h1>
     <div class="sub">{% if host.scope == 'home' %}<span class="tag">home folder</span> {% endif %}{{ host.user }}@{{ host.address }}{% if host.port != 22 %}:{{ host.port }}{% endif %}
-      · {% if host.enabled and host.schedule %}<code>{{ host.schedule }}</code>, next {{ next|dt }}{% else %}manual only{% endif %}
+      · {% if host.enabled and host.schedule %}<code>{{ host.schedule }}</code>, next {{ next|dt }}{% else %}manual only{% endif %}{% if next_retry %} · <strong>retry at {{ next_retry|dt }}</strong> (host was unreachable){% endif %}
       {% if host.backup_window %} · window {{ host.backup_window }}{% endif %}
       {% if host.bwlimit and host.bwlimit != '0' %} · max {{ host.bwlimit }}/s{% endif %}
       · keep {{ host.keep_last }} last / {{ host.keep_daily }}d / {{ host.keep_weekly }}w / {{ host.keep_monthly }}m</div>

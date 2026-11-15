@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS hosts (
     max_age_days    INTEGER,                 -- NULL = global default, 0 = never alert
     bwlimit         TEXT NOT NULL DEFAULT '', -- rsync --bwlimit value, e.g. 20M; '' = unlimited
     backup_window   TEXT NOT NULL DEFAULT '', -- e.g. 22:00-06:00; '' = any time
+    retry_minutes   INTEGER NOT NULL DEFAULT 0, -- retry an unreachable host every N min; 0 = off
     created         TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS runs (
@@ -70,7 +71,7 @@ HOST_FIELDS = [
     "name", "address", "port", "user", "scope", "paths", "excludes", "schedule", "enabled",
     "one_file_system", "acls_xattrs", "pre_cmd", "post_cmd", "extra_args",
     "keep_last", "keep_daily", "keep_weekly", "keep_monthly", "max_age_days",
-    "bwlimit", "backup_window",
+    "bwlimit", "backup_window", "retry_minutes",
 ]
 
 # Columns added after the first release: (table, column, definition)
@@ -79,6 +80,7 @@ MIGRATIONS = [
     ("hosts", "bwlimit", "TEXT NOT NULL DEFAULT ''"),
     ("hosts", "backup_window", "TEXT NOT NULL DEFAULT ''"),
     ("hosts", "scope", "TEXT NOT NULL DEFAULT 'system'"),
+    ("hosts", "retry_minutes", "INTEGER NOT NULL DEFAULT 0"),
 ]
 
 _conn: sqlite3.Connection | None = None

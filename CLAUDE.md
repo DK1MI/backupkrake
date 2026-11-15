@@ -80,6 +80,11 @@ purpose**, because storing the clients' uid/gid needs it.
   `ON DELETE CASCADE` with the host). `apply_retention()` leaves pinned snapshots out *before* selecting
   what to keep, so they don't use up GFS slots; it drops the meta rows of snapshots it prunes.
   `delete_snapshot(…, host_id)` refuses pinned ones.
+- **Unreachable hosts:** `_do_backup` calls `check_reachable()` (rsync `--list-only` of the first
+  path) before the pre-command; only ssh's `OFFLINE_PATTERNS` count, auth errors don't. With
+  `retry_minutes` and a `schedule`/`retry` trigger the run ends `skipped` (`stats.unreachable`) and
+  `scheduler.schedule_retry()` adds a one-off `retry-<id>` DateTrigger job, bounded by the next cron run
+  and the backup window. Retry jobs live in memory only; any successful backup cancels them.
 - **Restore with `--delete`** passes the host's excludes so excluded paths (docker, caches) are
   protected, and deleting is refused for whole-snapshot restores.
 - **Static files:** reference them in templates as `{{ static('style.css') }}`, never as a plain
@@ -123,9 +128,7 @@ bump it when releasing.
 
 ## Next up (agreed 2026-11-15, implement in the next session)
 
-1. **Retry / catch-up for hosts that are off:** when a scheduled backup fails because the host is
-   unreachable, retry every 15–30 min until one succeeds (bounded, e.g. until the next scheduled run),
-   or start as soon as the host is reachable again. Aimed at laptops/desktops.
+1. ~~**Retry / catch-up for hosts that are off**~~ – done (v0.5).
 2. ~~**Disk space alerts and forecast**~~ – done (v0.4).
 3. ~~**Pinned snapshots**~~ – done (v0.4).
 4. **Find a file across snapshots:** search by name/glob over a host's snapshots and list every

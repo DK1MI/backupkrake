@@ -155,6 +155,39 @@ def build_rsync_argv(host: dict, dest: Path, link_dest: Path | None, paths: list
     return argv
 
 
+# ssh errors meaning "the machine isn't there" (switched off, asleep, network down) as
+# opposed to configuration problems such as "Permission denied (publickey)".
+OFFLINE_PATTERNS = (
+    "No route to host", "Connection timed out", "Operation timed out", "Connection refused",
+    "Network is unreachable", "Host is down", "Could not resolve hostname",
+    "Name or service not known", "Temporary failure in name resolution",
+)
+
+
+class HostUnreachable(Exception):
+    pass
+
+
+async def check_reachable(host: dict) -> str | None:
+    """None if the host answers, else the ssh error line. Lists the first configured
+    path with rsync, so it works with the rrsync-restricted key too."""
+    paths = lines(host["paths"])
+    if not paths:
+        return None
+    proc = await asyncio.create_subprocess_exec(
+        config.RSYNC_BIN, "--list-only", "--dirs", "-e", sshkeys.ssh_command_string(host),
+        sshkeys.remote_spec(host, paths[0]),
+        stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
+    )
+    _, err = await proc.communicate()
+    if proc.returncode == 0:
+        return None
+    for line in err.decode("utf-8", errors="replace").splitlines():
+        if any(p in line for p in OFFLINE_PATTERNS):
+            return line.strip()
+    return None  # other errors (auth, missing path, ...) are reported by the real run
+
+
 async def probe_paths(host: dict, ctx: runner.RunContext) -> tuple[list[str], list[str]]:
     """Split configured paths into (existing, missing) on the client.
 
@@ -279,7 +312,7 @@ def window_guard(host: dict, ctx: runner.RunContext, trigger: str,
     """Apply the host's backup window to a scheduled run: (False, None) after marking the
     run skipped, or (True, watchdog task that stops the run when the window ends | None).
     Windows restrict scheduled runs only; a manual start is an explicit request."""
-    if trigger != "schedule" or not host.get("backup_window", "").strip():
+    if trigger not in ("schedule", "retry") or not host.get("backup_window", "").strip():
         return True, None
     window = windows.normalize(host["backup_window"])
     allowed, end = windows.state(windows.parse(window), datetime.now().astimezone())
@@ -307,6 +340,8 @@ async def run_backup(host_id: int, trigger: str = "manual") -> int | None:
                     return ctx.run_id
                 ctx.set_running()
                 await _do_backup(host, ctx)
+        except HostUnreachable as e:
+            _unreachable(host, ctx, trigger, str(e))
         except runner.Cancelled:
             ctx.finish("cancelled", ctx.stop_reason or "cancelled by user")
         except Exception as e:  # noqa: BLE001 - report everything into the run log
@@ -315,7 +350,28 @@ async def run_backup(host_id: int, trigger: str = "manual") -> int | None:
         finally:
             if watchdog:
                 watchdog.cancel()
+        if db.get_run(ctx.run_id)["status"] in ("success", "warning"):
+            from . import scheduler  # late import: scheduler imports this module
+            scheduler.cancel_retry(host_id)
         return ctx.run_id
+
+
+def _unreachable(host: dict, ctx: runner.RunContext, trigger: str, error: str) -> None:
+    """Finish a run whose host didn't answer. Hosts with retries enabled (laptops,
+    desktops) get a 'skipped' run and a retry instead of a failure notification."""
+    msg = f"host unreachable ({error})"
+    ctx.log(msg)
+    stats = {"unreachable": True}
+    if not (host.get("retry_minutes") and trigger in ("schedule", "retry")):
+        ctx.finish("failed", msg, stats=stats)
+        return
+    from . import scheduler  # late import: scheduler imports this module
+    when = scheduler.schedule_retry(host)
+    if when:
+        ctx.finish("skipped", f"host unreachable; retrying at {when:%H:%M}", stats=stats)
+    else:
+        ctx.finish("skipped", "host unreachable; no retry before the next scheduled backup "
+                              "or the end of the backup window", stats=stats)
 
 
 async def _do_backup(host: dict, ctx: runner.RunContext) -> None:
@@ -337,6 +393,9 @@ async def _do_backup(host: dict, ctx: runner.RunContext) -> None:
     ctx.log(f"previous snapshot: {prev or 'none (full copy)'}")
     if bwlimit_args(host):
         ctx.log(f"bandwidth limit: {host['bwlimit']}")
+
+    if offline := await check_reachable(host):
+        raise HostUnreachable(offline)
 
     if host["pre_cmd"].strip():
         rc, _ = await ctx.exec(sshkeys.ssh_argv(host, host["pre_cmd"]))

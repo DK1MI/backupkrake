@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from . import backup, config, db, notify, offsite, verify, windows
@@ -76,6 +77,8 @@ def sync_host(host: dict) -> None:
     jid = _job_id(host["id"])
     if _sched.get_job(jid):
         _sched.remove_job(jid)
+    if not host.get("retry_minutes"):
+        cancel_retry(host["id"])
     if host["enabled"] and host["schedule"].strip():
         _sched.add_job(
             _backup_job, CronTrigger.from_crontab(host["schedule"].strip()),
@@ -86,6 +89,7 @@ def sync_host(host: dict) -> None:
 def remove_host(host_id: int) -> None:
     if _sched and _sched.get_job(_job_id(host_id)):
         _sched.remove_job(_job_id(host_id))
+    cancel_retry(host_id)
 
 
 def sync_offsite() -> None:
@@ -123,6 +127,45 @@ def sync_verify() -> None:
 
 def next_verify(job_id: str = VERIFY_JOB) -> datetime | None:
     job = _sched.get_job(job_id) if _sched else None
+    return job.next_run_time if job else None
+
+
+# --- retries for unreachable hosts ---------------------------------------------------
+
+def _retry_id(host_id: int) -> str:
+    return f"retry-{host_id}"
+
+
+async def _retry_job(host_id: int) -> None:
+    await backup.run_backup(host_id, trigger="retry")
+
+
+def schedule_retry(host: dict, now: datetime | None = None) -> datetime | None:
+    """Plan the next attempt for an unreachable host, or None when it would collide with
+    the next regular run or fall outside the backup window."""
+    minutes = int(host.get("retry_minutes") or 0)
+    if not _sched or minutes <= 0:
+        return None
+    now = now or datetime.now().astimezone()
+    at = now + timedelta(minutes=minutes)
+    nxt = next_run(host["id"])
+    if nxt is not None and at >= nxt - timedelta(minutes=1):
+        return None
+    if host.get("backup_window", "").strip():
+        if not windows.state(windows.parse(host["backup_window"]), at)[0]:
+            return None
+    _sched.add_job(_retry_job, DateTrigger(run_date=at), id=_retry_id(host["id"]), args=[host["id"]],
+                   replace_existing=True, misfire_grace_time=600)
+    return at
+
+
+def cancel_retry(host_id: int) -> None:
+    if _sched and _sched.get_job(_retry_id(host_id)):
+        _sched.remove_job(_retry_id(host_id))
+
+
+def next_retry(host_id: int) -> datetime | None:
+    job = _sched.get_job(_retry_id(host_id)) if _sched else None
     return job.next_run_time if job else None
 
 
