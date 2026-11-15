@@ -75,6 +75,10 @@ purpose**, because storing the clients' uid/gid needs it.
   The content check flags only files with `>fc........` (content differs, size and mtime equal);
   other itemized changes are normal edits since the backup. Its itemize lines are consumed through
   `exec(line_filter=…)` so they don't flood the log. It reuses `backup.window_guard()` and the host lock.
+- **Pins and notes** live in the `snapshot_meta` table (rows only for snapshots that have one;
+  `ON DELETE CASCADE` with the host). `apply_retention()` leaves pinned snapshots out *before* selecting
+  what to keep, so they don't use up GFS slots; it drops the meta rows of snapshots it prunes.
+  `delete_snapshot(…, host_id)` refuses pinned ones.
 - **Restore with `--delete`** passes the host's excludes so excluded paths (docker, caches) are
   protected, and deleting is refused for whole-snapshot restores.
 - **Static files:** reference them in templates as `{{ static('style.css') }}`, never as a plain
@@ -123,8 +127,7 @@ bump it when releasing.
    or start as soon as the host is reachable again. Aimed at laptops/desktops.
 2. **Disk space alerts and forecast:** track per-host growth, warn (notification) before `/data` runs
    full, and estimate when it will be full at the current rate.
-3. **Pinned snapshots:** "keep forever" flag (plus optional note) that retention never prunes, e.g.
-   "before OS upgrade".
+3. ~~**Pinned snapshots**~~ – done (v0.4).
 4. **Find a file across snapshots:** search by name/glob over a host's snapshots and list every
    version (snapshot, date, size) with links to browse/download/restore.
 5. **Presets for consistent database/container backups:** ready-made pre-commands for PostgreSQL,

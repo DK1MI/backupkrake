@@ -94,3 +94,25 @@ function renderProgress(p) {
   if (p.eta) parts.push(`about ${fmtDuration(p.eta)} left`);
   document.getElementById("progress-detail").textContent = parts.join(" · ");
 }
+
+// Pin / note dialog on the host page: one shared <dialog>, filled from the clicked button.
+document.addEventListener("click", (ev) => {
+  const btn = ev.target.closest("[data-snap-meta]");
+  const dlg = document.getElementById("snap-meta-dialog");
+  if (!dlg) return;
+  if (btn) {
+    const form = dlg.querySelector("form");
+    form.action = btn.dataset.snapMeta;
+    form.elements.note.value = btn.dataset.note || "";
+    form.elements.pinned.checked = btn.dataset.pinned === "1";
+    dlg.querySelector('[data-field="snap"]').textContent = btn.dataset.snap;
+    dlg.showModal();
+    form.elements.note.focus();
+  } else if (ev.target.closest("[data-close]")) {
+    dlg.close();
+  } else if (ev.target === dlg) {
+    // Clicks on the backdrop also target the dialog: close only if outside its box.
+    const r = dlg.getBoundingClientRect();
+    if (ev.clientX < r.left || ev.clientX > r.right || ev.clientY < r.top || ev.clientY > r.bottom) dlg.close();
+  }
+});

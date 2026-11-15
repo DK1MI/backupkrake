@@ -47,6 +47,13 @@ CREATE TABLE IF NOT EXISTS runs (
     stats     TEXT NOT NULL DEFAULT '{}'
 );
 CREATE INDEX IF NOT EXISTS runs_host ON runs(host_id, id DESC);
+CREATE TABLE IF NOT EXISTS snapshot_meta (   -- pins and notes; rows only for snapshots that have one
+    host_id   INTEGER NOT NULL REFERENCES hosts(id) ON DELETE CASCADE,
+    snapshot  TEXT NOT NULL,
+    pinned    INTEGER NOT NULL DEFAULT 0,    -- 1 = never removed by retention or "Delete"
+    note      TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (host_id, snapshot)
+);
 CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -144,6 +151,34 @@ def update_host(host_id: int, data: dict) -> None:
 
 def delete_host(host_id: int) -> None:
     execute("DELETE FROM hosts WHERE id=?", (host_id,))
+
+
+# --- snapshot pins and notes ---------------------------------------------------
+
+def snapshot_meta(host_id: int) -> dict[str, dict]:
+    """{snapshot name: {"pinned": bool, "note": str}} for the host's snapshots that have either."""
+    rows = query("SELECT snapshot, pinned, note FROM snapshot_meta WHERE host_id=?", (host_id,))
+    return {r["snapshot"]: {"pinned": bool(r["pinned"]), "note": r["note"]} for r in rows}
+
+
+def set_snapshot_meta(host_id: int, snapshot: str, pinned: bool, note: str) -> None:
+    if not pinned and not note:
+        execute("DELETE FROM snapshot_meta WHERE host_id=? AND snapshot=?", (host_id, snapshot))
+        return
+    execute(
+        "INSERT INTO snapshot_meta (host_id, snapshot, pinned, note) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(host_id, snapshot) DO UPDATE SET pinned=excluded.pinned, note=excluded.note",
+        (host_id, snapshot, int(pinned), note),
+    )
+
+
+def forget_snapshot_meta(host_id: int, snapshot: str) -> None:
+    execute("DELETE FROM snapshot_meta WHERE host_id=? AND snapshot=?", (host_id, snapshot))
+
+
+def pinned_snapshots(host_id: int) -> set[str]:
+    return {r["snapshot"] for r in query(
+        "SELECT snapshot FROM snapshot_meta WHERE host_id=? AND pinned=1", (host_id,))}
 
 
 # --- runs ------------------------------------------------------------------

@@ -14,7 +14,7 @@ Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a w
 - **Non-root hosts**: back up just your home folder on systems where you only have a normal account (e.g. shared Unix systems), with a key locked to that folder.
 - **Hardlinked snapshots**: every snapshot is a complete, browsable directory tree. Unchanged files are hardlinked to the previous snapshot, so each new snapshot only uses space for changed files. See [How snapshots work](#how-snapshots-work).
 - **Backup windows & bandwidth limits**: per host, e.g. only between 22:00 and 06:00 at max 20 MiB/s; a backup still running when the window closes is stopped and resumes the next night.
-- **Retention**: keep the last N snapshots plus N daily, weekly and monthly ones, applied after every backup.
+- **Retention**: keep the last N snapshots plus N daily, weekly and monthly ones, applied after every backup. Pin a snapshot (e.g. *before OS upgrade*) to keep it until you unpin it.
 - **Push-restore**: put files or folders from any snapshot back onto a client (staging dir, original location or another folder, even on another host), with a dry-run preview first.
 - **Backup verification**: every backup is compared with the previous one, and one that is suspiciously smaller (a disk that didn't mount, an empty volume) is flagged and reported. A content check compares a snapshot with the client file by file to find silent corruption. A scheduled offsite restore test reads back part of the restic repository and restores random files of every host, comparing them byte for byte with the local snapshots.
 - **Notifications**: ntfy and/or Pushover push messages when a backup fails or a host has had no successful backup for N days (optionally also warnings, offsite/restore failures, and "OK again"). An optional hourly heartbeat to healthchecks.io/Uptime Kuma covers the server itself being down.
@@ -245,6 +245,10 @@ Every snapshot directory is a complete copy of the backed-up paths, laid out as 
    - **Deleted on the client:** simply not present in the new snapshot. Older snapshots still have it.
 4. When rsync finishes, the directory is renamed from `.partial` to its timestamp and `latest` is pointed at it. Only then does it count as a snapshot. If rsync exits with code 23/24 (some files unreadable or vanished), the snapshot is still kept and the run is marked *warning*. On any other failure the `.partial` directory stays and the next run continues with it.
 5. Retention deletes snapshots that are no longer needed.
+
+### Pinned snapshots and notes
+
+On a host's page, **Pin / note** lets you add a note to any snapshot and pin it. A pinned snapshot is outside retention: it is never removed automatically and can't be deleted until you unpin it. It also doesn't use up one of the daily/weekly/monthly slots, so the regular series stays the same. Pins apply to the snapshots on the server; the offsite copy keeps its own retention. A pinned snapshot only costs the space of files that no other snapshot shares.
 
 ### Why deleting a snapshot is safe
 

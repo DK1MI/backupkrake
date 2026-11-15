@@ -35,7 +35,9 @@
   <tbody>
   {% for s in snapshots %}
     <tr>
-      <td><a href="/hosts/{{ host.id }}/browse/{{ s.name }}"><strong>{{ s.name|snap }}</strong></a>{% if loop.first %} <span class="tag">latest</span>{% endif %}</td>
+      <td><a href="/hosts/{{ host.id }}/browse/{{ s.name }}"><strong>{{ s.name|snap }}</strong></a>{% if loop.first %} <span class="tag">latest</span>{% endif %}
+        {% if s.pinned %} <span class="tag pin" title="Kept until you unpin it; retention never removes it">pinned</span>{% endif %}
+        {% if s.note %}<div class="snap-note">{{ s.note }}</div>{% endif %}</td>
       {% if s.run %}
         <td><a href="/runs/{{ s.run.id }}">{{ badge(s.run.status) }}</a></td>
         <td>{{ '{:,}'.format(s.run.stats.files) if s.run.stats.files is defined else '–' }}</td>
@@ -49,15 +51,29 @@
         <a class="button small" href="/hosts/{{ host.id }}/browse/{{ s.name }}">Browse</a>
         <a class="button small" href="/hosts/{{ host.id }}/download/{{ s.name }}">.tar.gz</a>
         <a class="button small" href="/hosts/{{ host.id }}/restore/{{ s.name }}">Restore…</a>
+        <button type="button" class="small" data-snap-meta="/hosts/{{ host.id }}/snapshots/{{ s.name }}/meta"
+                data-snap="{{ s.name|snap }}" data-note="{{ s.note }}" data-pinned="{{ 1 if s.pinned else 0 }}">{{ 'Unpin / note' if s.pinned else 'Pin / note' }}</button>
+        {% if not s.pinned %}
         <form method="post" action="/hosts/{{ host.id }}/snapshots/{{ s.name }}/delete" data-confirm="Delete snapshot {{ s.name }}? This cannot be undone.">
           <button class="small danger">Delete</button>
         </form>
+        {% endif %}
       </td>
     </tr>
   {% endfor %}
   </tbody>
 </table>
 </div>
+<dialog id="snap-meta-dialog" class="card">
+  <form method="post" class="form snap-meta-form">
+    <h3>Snapshot <span data-field="snap"></span></h3>
+    <label>Note <input name="note" maxlength="200" placeholder="e.g. before OS upgrade"></label>
+    <label class="inline"><input type="checkbox" name="pinned" value="1"> Pinned: keep until unpinned</label>
+    <small>Retention never removes a pinned snapshot, and it can't be deleted until it's unpinned. Pins apply to
+      the snapshots on this server, not to the offsite copy.</small>
+    <div class="buttons"><button class="primary">Save</button><button type="button" data-close>Cancel</button></div>
+  </form>
+</dialog>
 {% else %}
 <p class="muted">No snapshots yet.</p>
 {% endif %}

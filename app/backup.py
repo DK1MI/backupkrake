@@ -86,12 +86,16 @@ def _rmtree(path: Path) -> None:
     shutil.rmtree(path, onexc=onexc)
 
 
-def delete_snapshot(name: str, snap: str) -> None:
+def delete_snapshot(name: str, snap: str, host_id: int | None = None) -> None:
     p = snapshot_path(name, snap)
     if p in in_use:
         raise RuntimeError("snapshot is in use by a running job")
+    if host_id is not None and snap in db.pinned_snapshots(host_id):
+        raise RuntimeError("snapshot is pinned; unpin it first")
     _rmtree(p)
     _update_latest(name)
+    if host_id is not None:
+        db.forget_snapshot_meta(host_id, snap)
 
 
 def delete_host_data(name: str) -> None:
@@ -225,7 +229,10 @@ def parse_stats(output: list[str]) -> dict:
 
 
 def apply_retention(host: dict, ctx: runner.RunContext | None = None) -> list[str]:
-    snaps = list_snapshots(host["name"])
+    # Pinned snapshots are outside retention: never removed, and they don't use up a
+    # daily/weekly/monthly slot, so the regular series stays the same with or without pins.
+    pinned = db.pinned_snapshots(host["id"]) if host.get("id") is not None else set()
+    snaps = [s for s in list_snapshots(host["name"]) if s not in pinned]
     stamps = {parse_snapshot(s): s for s in snaps}
     keep = retention.select_keep(
         list(stamps), host["keep_last"], host["keep_daily"], host["keep_weekly"], host["keep_monthly"]
@@ -241,6 +248,8 @@ def apply_retention(host: dict, ctx: runner.RunContext | None = None) -> list[st
             ctx.log(f"retention: removing snapshot {snap}")
         _rmtree(p)
         removed.append(snap)
+        if host.get("id") is not None:
+            db.forget_snapshot_meta(host["id"], snap)  # drop its note, if any
     _update_latest(host["name"])
     return removed
 

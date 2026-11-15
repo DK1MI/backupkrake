@@ -356,7 +356,9 @@ async def host_detail(request: Request, host_id: int):
     runs = db.list_runs(host_id=host_id, limit=30)
     by_snap = {r["snapshot"]: r for r in db.list_runs(host_id=host_id, limit=100000, kind="backup")
                if r["snapshot"]}
-    snapshots = [{"name": s, "run": by_snap.get(s)} for s in snaps]
+    meta = db.snapshot_meta(host_id)
+    snapshots = [{"name": s, "run": by_snap.get(s), **meta.get(s, {"pinned": False, "note": ""})}
+                 for s in snaps]
     return render(request, "host_detail.html", host=host, snapshots=snapshots, runs=runs,
                   next=scheduler.next_run(host_id), running=backup.host_lock(host_id).locked(),
                   current=_current_run(host_id))
@@ -462,10 +464,25 @@ async def host_forget_key(request: Request, host_id: int):
 async def snapshot_delete(request: Request, host_id: int, snap: str):
     host = host_or_404(host_id)
     try:
-        await asyncio.to_thread(backup.delete_snapshot, host["name"], snap)
+        await asyncio.to_thread(backup.delete_snapshot, host["name"], snap, host_id)
         flash(request, f"Snapshot {snap} deleted")
     except (ValueError, FileNotFoundError, RuntimeError) as e:
         flash(request, f"Could not delete snapshot: {e}", "error")
+    return redirect(f"/hosts/{host_id}")
+
+
+@app.post("/hosts/{host_id}/snapshots/{snap}/meta")
+async def snapshot_meta(request: Request, host_id: int, snap: str):
+    host = host_or_404(host_id)
+    try:
+        backup.snapshot_path(host["name"], snap)
+    except (ValueError, FileNotFoundError):
+        raise HTTPException(404)
+    form = await request.form()
+    pinned = bool(form.get("pinned"))
+    note = " ".join(str(form.get("note", "")).split())[:200]
+    db.set_snapshot_meta(host_id, snap, pinned, note)
+    flash(request, f"Snapshot {snap} " + ("pinned" if pinned else "saved"))
     return redirect(f"/hosts/{host_id}")
 
 
