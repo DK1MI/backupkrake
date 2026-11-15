@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -217,15 +217,14 @@ async def dashboard(request: Request):
     disk = usage.disk_now()
     forecast = usage.forecast(disk=disk)
     disk_problem = notify.disk_problem(forecast, nset)
-    off = offsite.get_settings()
-    last_off = db.one("SELECT * FROM runs WHERE kind='offsite' ORDER BY id DESC LIMIT 1")
+    off_targets = [{**x, "last": _last_target_run(x), "next": scheduler.next_offsite(x["id"])}
+                   for x in offsite.targets() if offsite.configured(x)]
     active = db.query("SELECT * FROM runs WHERE status IN ('queued','running') ORDER BY id")
     for r in active:
         r["progress"] = runner.get_progress(r["id"])
     return render(
-        request, "dashboard.html", hosts=hosts, usage=disk, forecast=forecast, disk_problem=disk_problem, offsite=off,
-        offsite_configured=offsite.configured(off), last_offsite=last_off,
-        next_offsite=scheduler.next_run(None), active=active,
+        request, "dashboard.html", hosts=hosts, usage=disk, forecast=forecast, disk_problem=disk_problem,
+        offsite_targets=off_targets, active=active,
     )
 
 
@@ -690,57 +689,131 @@ async def run_cancel(request: Request, run_id: int):
 
 # --- offsite ---------------------------------------------------------------
 
+def target_or_404(target_id: int) -> dict:
+    t = offsite.get_target(target_id)
+    if t is None:
+        raise HTTPException(404, "offsite target not found")
+    return t
+
+
+def _last_target_run(t: dict) -> dict | None:
+    return db.one("SELECT * FROM runs WHERE kind='offsite' AND host_id IS NULL AND host_name=? "
+                  "ORDER BY id DESC LIMIT 1", (t["name"],))
+
+
+def _offsite_runs(limit: int = 20, target: dict | None = None) -> list[dict]:
+    runs = [r for r in db.list_runs(limit=400) if r["kind"].startswith("offsite")]
+    if target is not None:
+        runs = [r for r in runs if r["host_name"] == target["name"]]
+    return runs[:limit]
+
+
 @app.get("/offsite", response_class=HTMLResponse)
 async def offsite_page(request: Request):
-    s = offsite.get_settings()
-    runs = [r for r in db.list_runs(limit=200) if r["kind"].startswith("offsite")][:20]
-    return render(request, "offsite.html", s=s, configured=offsite.configured(s), runs=runs,
-                  next=scheduler.next_run(None), errors=[],
-                  offsite_pubkey=sshkeys.offsite_public_key(), sftp=offsite.is_sftp(s))
+    hosts = {h["id"]: h["name"] for h in db.list_hosts()}
+    items = [{**t, "configured": offsite.configured(t), "last": _last_target_run(t),
+              "next": scheduler.next_offsite(t["id"]),
+              "host_names": None if t["host_ids"] is None else [hosts[i] for i in t["host_ids"] if i in hosts]}
+             for t in offsite.targets()]
+    return render(request, "offsite.html", targets=items, runs=_offsite_runs())
 
 
-@app.post("/offsite")
-async def offsite_save(request: Request):
+def _target_form(request: Request, t: dict, errors: list[str]) -> HTMLResponse:
+    return render(request, "offsite_target.html", s=t, is_new=t.get("id") is None, errors=errors,
+                  configured=offsite.configured(t), hosts=db.list_hosts(),
+                  runs=_offsite_runs(target=t) if t.get("id") is not None else [],
+                  next=scheduler.next_offsite(t["id"]) if t.get("id") is not None else None,
+                  offsite_pubkey=sshkeys.offsite_public_key(), sftp=offsite.is_sftp(t))
+
+
+@app.get("/offsite/new", response_class=HTMLResponse)
+async def offsite_new(request: Request):
+    name = "Offsite" if not offsite.targets() else ""
+    return _target_form(request, {**offsite.TARGET_DEFAULTS, "name": name}, [])
+
+
+@app.get("/offsite/{target_id}", response_class=HTMLResponse)
+async def offsite_target_page(request: Request, target_id: int):
+    return _target_form(request, target_or_404(target_id), [])
+
+
+async def _save_target(request: Request, t: dict) -> Response:
     form = await request.form()
-    s = offsite.get_settings()
     errors = []
-    s["enabled"] = bool(form.get("enabled"))
-    s["include_config"] = bool(form.get("include_config"))
-    s["repository"] = str(form.get("repository", "")).strip()
+    t = dict(t)
+    t["name"] = " ".join(str(form.get("name", "")).split())[:40]
+    if not t["name"]:
+        errors.append("Name is required")
+    elif any(o["name"].lower() == t["name"].lower() and o["id"] != t.get("id") for o in offsite.targets()):
+        errors.append("Another offsite target already has this name")
+    t["enabled"] = bool(form.get("enabled"))
+    t["include_config"] = bool(form.get("include_config"))
+    t["repository"] = str(form.get("repository", "")).strip()
     new_pw = str(form.get("password", ""))
     if new_pw:
-        s["password"] = new_pw
-    s["env"] = str(form.get("env", "")).replace("\r\n", "\n").strip()
-    s["schedule"] = str(form.get("schedule", "")).strip()
-    if err := scheduler.validate_cron(s["schedule"]):
+        t["password"] = new_pw
+    t["env"] = str(form.get("env", "")).replace("\r\n", "\n").strip()
+    t["schedule"] = str(form.get("schedule", "")).strip()
+    if err := scheduler.validate_cron(t["schedule"]):
         errors.append(f"Schedule: {err}")
+    t["window"] = str(form.get("window", "")).strip()
+    if t["window"]:
+        try:
+            t["window"] = windows.normalize(t["window"])
+        except ValueError as e:
+            errors.append(f"Upload window: {e}")
+    if form.get("hosts_mode") == "selected":
+        known = {h["id"] for h in db.list_hosts()}
+        t["host_ids"] = sorted(int(v) for v in form.getlist("host_ids") if str(v).isdigit() and int(v) in known)
+    else:
+        t["host_ids"] = None
     for k in ("keep_daily", "keep_weekly", "keep_monthly", "keep_yearly", "limit_upload"):
         try:
-            s[k] = max(0, int(form.get(k) or 0))
+            t[k] = max(0, int(form.get(k) or 0))
         except ValueError:
             errors.append(f"{k.replace('_', ' ')} must be a number")
-    if s["enabled"] and not (s["repository"] and s["password"]):
-        errors.append("Repository and password are required to enable offsite backups")
+    if t["enabled"] and not (t["repository"] and t["password"]):
+        errors.append("Repository and password are required to enable scheduled uploads")
     if errors:
-        runs = [r for r in db.list_runs(limit=200) if r["kind"].startswith("offsite")][:20]
-        return render(request, "offsite.html", s=s, configured=offsite.configured(s), runs=runs,
-                      next=scheduler.next_run(None), errors=errors,
-                      offsite_pubkey=sshkeys.offsite_public_key(), sftp=offsite.is_sftp(s))
-    offsite.save_settings(s)
+        return _target_form(request, t, errors)
+    target_id = offsite.save_target(t)
     scheduler.sync_offsite()
     scheduler.sync_verify()
-    flash(request, "Offsite settings saved")
+    flash(request, f"Offsite target {t['name']} saved")
+    return redirect(f"/offsite/{target_id}")
+
+
+@app.post("/offsite/new")
+async def offsite_create(request: Request):
+    return await _save_target(request, {**offsite.TARGET_DEFAULTS})
+
+
+@app.post("/offsite/{target_id}")
+async def offsite_save(request: Request, target_id: int):
+    return await _save_target(request, target_or_404(target_id))
+
+
+@app.post("/offsite/{target_id}/delete")
+async def offsite_delete(request: Request, target_id: int):
+    t = target_or_404(target_id)
+    if offsite.lock_for(t).locked():
+        flash(request, "A job for this target is running; try again when it has finished", "error")
+        return redirect(f"/offsite/{target_id}")
+    offsite.delete_target(target_id)
+    scheduler.sync_offsite()
+    scheduler.sync_verify()
+    flash(request, f"Offsite target {t['name']} removed. The data in its repository was not touched.")
     return redirect("/offsite")
 
 
-async def _offsite_action(request: Request, coro) -> RedirectResponse:
+async def _offsite_action(request: Request, coro, back: str = "/offsite") -> RedirectResponse:
     task = runner.spawn(coro)
     await asyncio.sleep(0.2)
     if task.done() and task.result() is None:
-        flash(request, "Another offsite job is already running", "error")
-        return redirect("/offsite")
+        flash(request, "Another job for this offsite target is already running", "error")
+        return redirect(back)
     run = db.one("SELECT id FROM runs WHERE kind LIKE 'offsite%' ORDER BY id DESC LIMIT 1")
-    return redirect(f"/runs/{run['id']}" if run else "/offsite")
+    return redirect(f"/runs/{run['id']}" if run else back)
 
 
 # --- verify --------------------------------------------------------------------
@@ -750,7 +823,8 @@ def _verify_page(request: Request, v: dict, errors: list[str]) -> HTMLResponse:
     content_runs = db.list_runs(kind=verify.CONTENT_KIND, limit=10)
     flagged = [r for r in db.list_runs(kind="backup", limit=500) if r["stats"].get("plausibility")][:10]
     return render(request, "verify.html", v=v, errors=errors, runs=runs, flagged=flagged,
-                  content_runs=content_runs, offsite_configured=offsite.configured(),
+                  content_runs=content_runs, offsite_configured=offsite.any_configured(),
+                  offsite_targets=[x for x in offsite.targets() if offsite.configured(x)],
                   next=scheduler.next_verify(), next_content=scheduler.next_verify(scheduler.CONTENT_JOB))
 
 
@@ -791,52 +865,54 @@ async def verify_save(request: Request):
 
 
 @app.post("/verify/run")
-async def verify_run(request: Request):
-    return await _offsite_action(request, verify.run_restore_test("manual"))
+async def verify_run(request: Request, target_id: int | None = None):
+    if target_id is not None:
+        target_or_404(target_id)
+    return await _offsite_action(request, verify.run_restore_test("manual", target_id), back="/verify")
 
 
-@app.post("/offsite/run")
-async def offsite_run(request: Request):
-    return await _offsite_action(request, offsite.run_offsite("manual"))
+_SIMPLE = {"init": ["init"], "check": ["check"], "unlock": ["unlock"]}
 
 
-@app.post("/offsite/init")
-async def offsite_init(request: Request):
-    return await _offsite_action(request, offsite.run_simple("offsite-init", ["init"]))
+@app.post("/offsite/{target_id}/run")
+async def offsite_run(request: Request, target_id: int):
+    target_or_404(target_id)
+    return await _offsite_action(request, offsite.run_offsite("manual", target_id), f"/offsite/{target_id}")
 
 
-@app.post("/offsite/check")
-async def offsite_check(request: Request):
-    return await _offsite_action(request, offsite.run_simple("offsite-check", ["check"]))
+@app.post("/offsite/{target_id}/{action}")
+async def offsite_simple(request: Request, target_id: int, action: str):
+    if action not in _SIMPLE:
+        raise HTTPException(404)
+    target_or_404(target_id)
+    return await _offsite_action(request, offsite.run_simple(f"offsite-{action}", _SIMPLE[action], target_id),
+                                 f"/offsite/{target_id}")
 
 
-@app.post("/offsite/unlock")
-async def offsite_unlock(request: Request):
-    return await _offsite_action(request, offsite.run_simple("offsite-unlock", ["unlock"]))
-
-
-@app.get("/offsite/snapshots", response_class=HTMLResponse)
-async def offsite_snapshots(request: Request):
+@app.get("/offsite/{target_id}/snapshots", response_class=HTMLResponse)
+async def offsite_snapshots(request: Request, target_id: int):
+    t = target_or_404(target_id)
     error, snaps = None, []
-    if not offsite.configured():
-        error = "Offsite repository is not configured"
+    if not offsite.configured(t):
+        error = "This offsite target is not configured"
     else:
         try:
-            snaps = await offsite.list_snapshots()
+            snaps = await offsite.list_snapshots(t)
         except Exception as e:  # noqa: BLE001
             error = str(e)
-    return render(request, "offsite_snapshots.html", snaps=snaps, error=error,
+    return render(request, "offsite_snapshots.html", target=t, snaps=snaps, error=error,
                   restore_dir=config.RESTORE_DIR, config_host=offsite.CONFIG_HOST)
 
 
-@app.post("/offsite/restore/{snap_id}")
-async def offsite_restore(request: Request, snap_id: str):
+@app.post("/offsite/{target_id}/restore/{snap_id}")
+async def offsite_restore(request: Request, target_id: int, snap_id: str):
+    target_or_404(target_id)
     if not snap_id.isalnum() or len(snap_id) > 64:
         raise HTTPException(400, "invalid snapshot id")
-    target = config.RESTORE_DIR / f"offsite-{snap_id[:8]}-{datetime.now().strftime(config.SNAPSHOT_FMT)}"
+    dest = config.RESTORE_DIR / f"offsite-{snap_id[:8]}-{datetime.now().strftime(config.SNAPSHOT_FMT)}"
     return await _offsite_action(
-        request, offsite.run_simple("offsite-restore", ["restore", snap_id, "--target", str(target)])
-    )
+        request, offsite.run_simple("offsite-restore", ["restore", snap_id, "--target", str(dest)], target_id),
+        f"/offsite/{target_id}/snapshots")
 
 
 # --- notifications ---------------------------------------------------------

@@ -124,19 +124,23 @@ def test_full_flow(client, tmp_path, monkeypatch):
 
 
 def test_offsite_settings(client):
+    from app import db, offsite
+    db.set_setting(offsite.TARGETS_KEY, [])
     login(client)
-    r = client.post("/offsite", data={"enabled": "1", "repository": "", "password": "", "schedule": "0 5 * * *",
-                                      "keep_daily": "7", "keep_weekly": "4", "keep_monthly": "12",
-                                      "keep_yearly": "3", "limit_upload": "0"})
+    form = {"name": "Cloud", "schedule": "0 5 * * *", "keep_daily": "7", "keep_weekly": "4",
+            "keep_monthly": "12", "keep_yearly": "3", "limit_upload": "0", "hosts_mode": "all"}
+    r = client.post("/offsite/new", data={**form, "enabled": "1", "repository": "", "password": ""})
     assert "Repository and password are required" in r.text
-    r = client.post("/offsite", data={"repository": "/tmp/x", "password": "pw", "schedule": "0 5 * * *",
-                                      "keep_daily": "7", "keep_weekly": "4", "keep_monthly": "12",
-                                      "keep_yearly": "3", "limit_upload": "0"}, follow_redirects=True)
-    assert "Offsite settings saved" in r.text
+    r = client.post("/offsite/new", data={**form, "repository": "/tmp/x", "password": "pw"}, follow_redirects=True)
+    assert "Offsite target Cloud saved" in r.text
+    tid = next(t["id"] for t in offsite.targets() if t["name"] == "Cloud")
     # empty password field keeps the stored password
-    client.post("/offsite", data={"repository": "/tmp/x", "password": "", "schedule": "0 5 * * *",
-                                  "keep_daily": "7", "keep_weekly": "4", "keep_monthly": "12",
-                                  "keep_yearly": "3", "limit_upload": "0"})
-    from app import offsite
-    assert offsite.get_settings()["password"] == "pw"
-    assert "pw" not in client.get("/offsite").text.replace("password", "")
+    client.post(f"/offsite/{tid}", data={**form, "repository": "/tmp/x", "password": ""})
+    assert offsite.get_target(tid)["password"] == "pw"
+    assert "pw" not in client.get(f"/offsite/{tid}").text.replace("password", "")
+    # names are unique, windows are validated
+    r = client.post("/offsite/new", data={**form, "repository": "/tmp/y", "password": "pw", "name": "cloud"})
+    assert "already has this name" in r.text
+    r = client.post(f"/offsite/{tid}", data={**form, "repository": "/tmp/x", "window": "25:00-26:00"})
+    assert "Upload window" in r.text
+    assert client.get("/offsite/999").status_code == 404

@@ -114,7 +114,7 @@ def test_offsite_restore_test(tmp_path, monkeypatch):
     assert run["status"] == "failed", log_of(rid)
     assert "/etc/a.conf differs from the local snapshot" in run["summary"]
     s = notify.get_settings()
-    assert notify.build_message(run, s)[1] == "Offsite restore test failed"
+    assert notify.build_message(run, s)[1] == "Offsite restore test failed: Offsite"
 
     # local snapshot gone: files are still restored and size-checked
     backup.delete_snapshot("verify-h", backup.latest_snapshot("verify-h"))

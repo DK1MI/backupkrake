@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}{{ s.name or 'New target' }} · Offsite · Backupkrake{% endblock %}
+{% block content %}
+<div class="crumbs"><a href="/offsite">Offsite</a> /</div>
+<div class="pagehead">
+  <div>
+    <h1>{{ 'New offsite target' if is_new else s.name }}</h1>
+    {% if not is_new %}<div class="sub">Uploads the latest snapshot of {{ 'every host' if s.host_ids is none else 'the selected hosts' }}{% if s.include_config %} and Backupkrake's configuration{% endif %}, encrypted with restic.
+      {% if s.enabled and next %}Next run {{ next|dt }}.{% endif %}</div>{% endif %}
+  </div>
+  {% if configured and not is_new %}
+  <div class="buttons">
+    <form method="post" action="/offsite/{{ s.id }}/run"><button class="primary">Run now</button></form>
+    <a class="button" href="/offsite/{{ s.id }}/snapshots">Offsite snapshots</a>
+    <a class="button" href="/verify">Restore test</a>
+  </div>
+  {% endif %}
+</div>
+
+{% if errors %}
+<div class="flash error"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+<form method="post" class="form" action="{{ '/offsite/new' if is_new else '/offsite/%d'|format(s.id) }}">
+  <fieldset class="card">
+    <legend>Repository</legend>
+    <label>Name
+      <input name="name" value="{{ s.name }}" maxlength="40" required placeholder="e.g. USB disk, Storage Box">
+      <small>Shown in run lists and notifications.</small>
+    </label>
+    <label>Repository URL
+      <input name="repository" value="{{ s.repository }}" placeholder="s3:https://s3.eu-central-1.amazonaws.com/my-bucket/backup">
+      <small>Any restic backend, e.g. <code>sftp:user@host:/srv/restic</code>, <code>b2:bucket:path</code>, <code>rest:https://user:pass@host:8000/</code>, <code>s3:…</code>,
+        or a folder such as <code>/offsite/usb</code> for a USB disk or NAS share mounted into the container (see the README).</small>
+    </label>
+    <label>Encryption password
+      <input name="password" type="password" autocomplete="new-password" placeholder="{{ '•••••••• (unchanged; type to replace)' if s.password else 'required' }}">
+      <small><strong>Keep a copy of this password somewhere other than this server.</strong> Without it the offsite data cannot be decrypted.</small>
+    </label>
+    <details class="hint"{% if sftp %} open{% endif %}>
+      <summary>SFTP repositories (Hetzner Storage Box, NAS, any SSH server)</summary>
+      <p>For <code>sftp:</code> repositories Backupkrake logs in with its own offsite key. Add this public key to the
+        <code>authorized_keys</code> of the account on the SFTP server:</p>
+      <pre class="copy">{{ offsite_pubkey }}</pre>
+      <p>The server's host key is learned on first contact and kept in <code>/config/ssh/known_hosts</code>.
+        For a non-standard port, use the URL form <code>sftp://user@host:PORT//absolute/path</code>
+        (a single <code>/</code> after the port means a path relative to the login directory).</p>
+      <p>Hetzner Storage Box: enable SSH support, then install the key from any machine with
+        <code>echo '{{ offsite_pubkey }}' | ssh -p 23 uXXXXX@uXXXXX.your-storagebox.de install-ssh-key</code>
+        and use <code>sftp://uXXXXX@uXXXXX.your-storagebox.de:23//backupkrake</code>.</p>
+    </details>
+    <label>Backend environment
+      <textarea name="env" rows="4" placeholder="AWS_ACCESS_KEY_ID=…&#10;AWS_SECRET_ACCESS_KEY=…">{{ s.env }}</textarea>
+      <small>KEY=VALUE per line, e.g. credentials.</small>
+    </label>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>Hosts</legend>
+    <label class="inline"><input type="radio" name="hosts_mode" value="all" {% if s.host_ids is none %}checked{% endif %}> All hosts, including ones added later</label>
+    <label class="inline"><input type="radio" name="hosts_mode" value="selected" {% if s.host_ids is not none %}checked{% endif %}> Only these hosts:</label>
+    <div class="checks host-picks">
+      {% for h in hosts %}
+      <label><input type="checkbox" name="host_ids" value="{{ h.id }}" {% if s.host_ids is not none and h.id in s.host_ids %}checked{% endif %}> {{ h.name }}</label>
+      {% else %}<span class="muted">No hosts yet.</span>{% endfor %}
+    </div>
+    <small>Hosts you take out keep their existing snapshots in this repository until its retention removes them.</small>
+  </fieldset>
+
+  <fieldset class="card">
+    <legend>Schedule &amp; retention</legend>
+    <div class="grid">
+      <label>Schedule (cron) <input name="schedule" value="{{ s.schedule }}" placeholder="0 5 * * *">
+        <small>Pick a time after your host backups usually finish.</small></label>
+      <label class="inline"><input type="checkbox" name="enabled" value="1" {% if s.enabled %}checked{% endif %}> Scheduled offsite runs enabled</label>
+    </div>
+    <div class="grid">
+      <label>Upload window
+        <input name="window" value="{{ s.window }}" placeholder="any time, e.g. 01:00-06:00">
+        <small>Scheduled uploads only start inside this window and are stopped when it ends; the next run
+          continues where it left off. Useful to keep the internet line free during the day. “Run now” ignores it.</small>
+      </label>
+    </div>
+    <div class="grid four">
+      <label>Keep daily <input type="number" min="0" name="keep_daily" value="{{ s.keep_daily }}"></label>
+      <label>Keep weekly <input type="number" min="0" name="keep_weekly" value="{{ s.keep_weekly }}"></label>
+      <label>Keep monthly <input type="number" min="0" name="keep_monthly" value="{{ s.keep_monthly }}"></label>
+      <label>Keep yearly <input type="number" min="0" name="keep_yearly" value="{{ s.keep_yearly }}"></label>
+    </div>
+    <label class="inline"><input type="checkbox" name="include_config" value="1" {% if s.include_config %}checked{% endif %}>
+      Also upload Backupkrake's own configuration (database, SSH keys, settings, logs)</label>
+    <small>Recommended. With it, a lost server can be rebuilt completely from the offsite copy; see the README.</small>
+    <label>Upload limit (KiB/s, 0 = unlimited) <input type="number" min="0" name="limit_upload" value="{{ s.limit_upload }}"></label>
+  </fieldset>
+
+  <div class="buttons"><button class="primary">{{ 'Add target' if is_new else 'Save' }}</button>
+    <a class="button" href="/offsite">Cancel</a></div>
+</form>
+
+{% if configured and not is_new %}
+<div class="card">
+  <p><strong>Maintenance</strong></p>
+  <div class="buttons">
+    <form method="post" action="/offsite/{{ s.id }}/init" data-confirm="Initialise a new restic repository at this location?"><button>Initialise repository</button></form>
+    <form method="post" action="/offsite/{{ s.id }}/check"><button>Check repository</button></form>
+    <form method="post" action="/offsite/{{ s.id }}/unlock"><button>Remove stale locks</button></form>
+  </div>
+  <p class="sub">Run “Initialise repository” once for a new, empty location.</p>
+</div>
+{% endif %}
+
+{% if not is_new %}
+<h2>Recent runs of this target</h2>
+{% include "_runs_table.html" %}
+
+<details class="card danger-zone">
+  <summary>Danger zone</summary>
+  <form method="post" action="/offsite/{{ s.id }}/delete" class="row" data-confirm="Remove offsite target {{ s.name }}? The data in the repository stays where it is.">
+    <button class="danger">Remove this target</button>
+    <span class="sub">Stops uploads to it. The repository and its data are not touched; add the target again to reuse them.</span>
+  </form>
+</details>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Ticking a host means "only these hosts".
+document.querySelectorAll("input[name=host_ids]").forEach((cb) => cb.addEventListener("change", () => {
+  if (cb.checked) document.querySelector("input[name=hosts_mode][value=selected]").checked = true;
+}));
+</script>
+{% endblock %}

@@ -92,15 +92,20 @@ def _fmt(n: int) -> str:
 
 # --- offsite restore test ------------------------------------------------------
 
-async def run_restore_test(trigger: str = "manual") -> int | None:
-    """Returns the run id, or None if another offsite job is running."""
-    if offsite._lock.locked():
+async def run_restore_test(trigger: str = "manual", target_id: int | None = None) -> int | None:
+    """Test one offsite target (default: the first). Returns the run id, or None if
+    another job of that target is running."""
+    s = offsite.get_target(target_id) if target_id is not None else offsite.get_settings()
+    if s is None:
         return None
-    async with offsite._lock:
-        ctx = runner.RunContext(KIND, None, trigger)
+    lock = offsite.lock_for(s)
+    if lock.locked():
+        return None
+    async with lock:
+        ctx = runner.RunContext(KIND, offsite.run_owner(s), trigger)
         try:
             ctx.set_running()
-            await _do_restore_test(ctx)
+            await _do_restore_test(ctx, s)
         except runner.Cancelled:
             ctx.finish("cancelled", "cancelled by user")
         except Exception as e:  # noqa: BLE001
@@ -109,8 +114,15 @@ async def run_restore_test(trigger: str = "manual") -> int | None:
         return ctx.run_id
 
 
-async def _do_restore_test(ctx: runner.RunContext) -> None:
-    s, v = offsite.get_settings(), get_settings()
+async def run_all_restore_tests(trigger: str = "schedule") -> None:
+    """Scheduled job: test every configured target, one after the other."""
+    for t in offsite.targets():
+        if offsite.configured(t):
+            await run_restore_test(trigger, t["id"])
+
+
+async def _do_restore_test(ctx: runner.RunContext, s: dict) -> None:
+    v = get_settings()
     if not offsite.configured(s):
         ctx.finish("failed", "offsite repository not configured")
         return
@@ -125,7 +137,7 @@ async def _do_restore_test(ctx: runner.RunContext) -> None:
         problems.append("repository check failed")
 
     latest: dict[str, dict] = {}
-    for snap in await offsite.list_snapshots():  # newest first
+    for snap in await offsite.list_snapshots(s):  # newest first
         if snap.get("hostname") != offsite.CONFIG_HOST:
             latest.setdefault(snap["hostname"], snap)
     if not latest:

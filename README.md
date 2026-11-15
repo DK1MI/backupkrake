@@ -19,7 +19,7 @@ Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a w
 - **Backup verification**: every backup is compared with the previous one, and one that is suspiciously smaller (a disk that didn't mount, an empty volume) is flagged and reported. A content check compares a snapshot with the client file by file to find silent corruption. A scheduled offsite restore test reads back part of the restic repository and restores random files of every host, comparing them byte for byte with the local snapshots.
 - **Notifications**: ntfy and/or Pushover push messages when a backup fails or a host has had no successful backup for N days, or when the backup storage runs low or is forecast to fill up (optionally also warnings, offsite/restore failures, and "OK again"). An optional hourly heartbeat to healthchecks.io/Uptime Kuma covers the server itself being down.
 - **Web UI**: manage hosts, cron schedules, live logs with a progress bar (files checked, data transferred, speed, time left), run history and a snapshot browser with file and `.tar.gz` downloads.
-- **Encrypted offsite copy**: restic uploads the latest snapshot of every host to S3, B2, SFTP, a rest-server, etc., with its own retention policy and a restore option.
+- **Encrypted offsite copies**: restic uploads the latest snapshots to one or more targets (S3, B2, SFTP, a rest-server, a USB disk, …), each with its own schedule, upload window, host selection and retention, and a restore option.
 
 ## Screenshots
 
@@ -104,7 +104,7 @@ Available image tags:
 - the SSH keys your clients trust
 - the database: hosts, schedules, settings, and the offsite repository and password
 
-With **Offsite → "Also upload Backupkrake's own configuration"** (on by default), every offsite run also uploads a consistent copy of it as a separate restic snapshot. It shows up as *Backupkrake configuration* in the offsite snapshot list.
+With **"Also upload Backupkrake's own configuration"** in an offsite target's settings (on by default), every offsite run also uploads a consistent copy of it as a separate restic snapshot. It shows up as *Backupkrake configuration* in the offsite snapshot list.
 
 **Keep the restic repository URL, its password and any backend credentials outside this server** (e.g. in a password manager). They are stored in the database, but you need them to get the database back.
 
@@ -125,7 +125,7 @@ docker run --rm \
 docker compose up -d
 ```
 
-The clients still trust the restored SSH keys, so the next scheduled backups simply run. The first one copies everything again, because the local snapshot history is gone. To get files back that only exist offsite, use **Offsite → Offsite snapshots → Restore to server**, or `restic restore <id> --target …` as above.
+The clients still trust the restored SSH keys, so the next scheduled backups simply run. The first one copies everything again, because the local snapshot history is gone. To get files back that only exist offsite, use **Offsite → *target* → Offsite snapshots → Restore to server**, or `restic restore <id> --target …` as above.
 
 If you don't use offsite backups, keep a copy of `config/` some other way:
 
@@ -321,11 +321,33 @@ restic, used for offsite copies, doesn't use hard links. It splits files into co
   rsync -aHAX --numeric-ids /path/to/data/hosts/web1/latest/etc/nginx/ root@web1:/etc/nginx/
   ```
   (this needs a key that's allowed to write, i.e. not the `rrsync -ro` one).
-- **Disaster recovery**: *Offsite → Offsite snapshots → Restore to server* extracts a restic snapshot into `/data/restore/`. If the server itself is gone, any machine with `restic`, the repository URL and the password can restore.
+- **Disaster recovery**: *Offsite → target → Offsite snapshots → Restore to server* extracts a restic snapshot into `/data/restore/`. If the server itself is gone, any machine with `restic`, the repository URL and the password can restore.
 
 ## Offsite (restic)
 
-On the **Offsite** page set the repository (e.g. `s3:https://…/bucket/path`, `b2:bucket:path`, `sftp:user@host:/path`), password and any credentials as environment lines. For `sftp:` repositories Backupkrake uses its own offsite SSH key (`config/ssh/id_ed25519_offsite`); the Offsite page shows the public key to add on the SFTP server, and the server's host key is learned on first contact. Use `sftp://user@host:PORT//path` for a non-standard port (Hetzner Storage Box: port 23, install the key with `install-ssh-key`). Click **Initialise repository** once, then **Run now** or enable the schedule. Schedule it after your host backups usually finish.
+The **Offsite** page lists your offsite *targets*. Each one is a separate restic repository with its own password, schedule, retention, host selection and upload window, so you can have e.g. a USB disk at home **and** a cloud bucket (a full 3-2-1 setup: three copies, two media, one offsite). Targets run independently and may upload at the same time.
+
+**Add target**, then set:
+
+- **Repository**: any restic backend, e.g. `s3:https://…/bucket/path`, `b2:bucket:path`, `sftp:user@host:/path`, `rest:https://…`, or a folder inside the container for a local disk (see below). Credentials go into *Backend environment* as `KEY=VALUE` lines.
+- **Hosts**: all hosts (including ones added later) or only selected ones, e.g. only the important machines to the cloud and everything to the USB disk. A host you take out keeps its existing snapshots in that repository until retention removes them.
+- **Schedule** and **upload window** (e.g. `01:00-06:00`): like a host's backup window, scheduled uploads only start inside it and are stopped when it ends; the next run continues. **Run now** ignores the window.
+- **Retention** (daily/weekly/monthly/yearly), **upload limit**, and whether to include Backupkrake's own configuration.
+
+Click **Initialise repository** once per target, then **Run now** or enable the schedule. Schedule uploads after your host backups usually finish. Runs and notifications carry the target's name (*offsite · USB disk*, *Offsite backup failed: USB disk*). Removing a target only stops uploads; the repository and its data are left alone.
+
+**SFTP**: Backupkrake logs in with its own offsite SSH key (`config/ssh/id_ed25519_offsite`, shared by all targets); a target's page shows the public key to add on the server, and the server's host key is learned on first contact. Use `sftp://user@host:PORT//path` for a non-standard port (Hetzner Storage Box: port 23, install the key with `install-ssh-key`).
+
+**USB disk or NAS share**: mount it on the Docker host and pass it into the container, then use the folder as the repository, e.g. `/offsite/usb`:
+
+```yaml
+    volumes:
+      - /srv/backupkrake:/data
+      - ./config:/config
+      - /mnt/usb-backup:/offsite/usb        # the mounted USB disk
+```
+
+If the disk isn't mounted when an upload runs, the run fails with *repository does not exist* (and is reported), rather than silently writing into the empty mount point's folder on the system disk, as long as you initialised the repository on the disk itself.
 
 Only the latest local snapshot of each host is uploaded; restic keeps its own history (deduplicated). Each restic snapshot is tagged with its local snapshot name.
 
@@ -343,7 +365,7 @@ A backup that finishes without errors isn't necessarily complete or intact. The 
   1. `restic check --read-data-subset=5%` checks the repository structure and downloads and decrypts a random 5 % of the data (configurable), so the whole repository is read over time.
   2. For every host, a few random non-empty files (5 by default) are read from the latest offsite snapshot with `restic dump` and compared byte for byte (SHA-256) with the local snapshot they were uploaded from. If that local snapshot has since been pruned, the files are only checked for readability and size.
 
-  The result is a run like any other (*offsite-verify*). A failed test is reported like a failed offsite backup. Schedule it when no offsite upload runs; only one restic job runs at a time.
+  The result is a run like any other (*offsite-verify · target*); the scheduled test checks every target in turn. A failed test is reported like a failed offsite backup. Schedule it when no offsite upload runs; a target runs only one restic job at a time.
 
 ## Notifications
 

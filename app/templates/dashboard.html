@@ -26,15 +26,24 @@
   </div>
   <div class="tile">
     <div class="label">Offsite (restic)</div>
-    {% if not offsite_configured %}
+    {% if not offsite_targets %}
       <div class="value muted">not configured</div>
       <div class="sub"><a href="/offsite">Configure →</a></div>
-    {% else %}
-      <div class="value">{% if last_offsite %}{{ badge(last_offsite.status) }}{% else %}<span class="muted">never run</span>{% endif %}</div>
+    {% elif offsite_targets|length == 1 %}
+      {% set o = offsite_targets[0] %}
+      <div class="value">{% if o.last %}{{ badge(o.last.status) }}{% else %}<span class="muted">never run</span>{% endif %}</div>
       <div class="sub">
-        {% if last_offsite %}last {{ last_offsite.started|dt }} · {% endif %}
-        {% if offsite.enabled and next_offsite %}next {{ next_offsite|dt }}{% else %}schedule off{% endif %}
+        {% if o.last %}last {{ o.last.started|dt }} · {% endif %}
+        {% if o.enabled and o.next %}next {{ o.next|dt }}{% else %}schedule off{% endif %}
       </div>
+    {% else %}
+      <ul class="target-list">
+      {% for o in offsite_targets %}
+        <li><a href="/offsite/{{ o.id }}">{{ o.name }}</a>
+          {% if o.last %}{{ badge(o.last.status) }}{% else %}<span class="muted">never run</span>{% endif %}
+          <span class="sub">· {% if o.enabled and o.next %}next {{ o.next|dt }}{% else %}schedule off{% endif %}</span></li>
+      {% endfor %}
+      </ul>
     {% endif %}
   </div>
   <div class="tile">

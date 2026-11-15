@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Offsite snapshots · Backupkrake{% endblock %}
 {% block content %}
-<div class="crumbs"><a href="/offsite">Offsite</a> /</div>
+<div class="crumbs"><a href="/offsite">Offsite</a> / <a href="/offsite/{{ target.id }}">{{ target.name }}</a> /</div>
 <h1>Offsite snapshots</h1>
 {% if error %}
 <div class="flash error">{{ error }}</div>
@@ -26,7 +26,7 @@
       <td>{{ (s.summary.backup_end if s.summary is defined and s.summary else s.time)[:16]|replace('T', ' ') }}</td>
       <td>{{ s.summary.total_bytes_processed|bytes if s.summary is defined and s.summary else '–' }}</td>
       <td class="actions">
-        <form method="post" action="/offsite/restore/{{ s.id }}" data-confirm="Restore snapshot {{ s.short_id }} into {{ restore_dir }}?">
+        <form method="post" action="/offsite/{{ target.id }}/restore/{{ s.id }}" data-confirm="Restore snapshot {{ s.short_id }} into {{ restore_dir }}?">
           <button class="small">Restore to server</button>
         </form>
       </td>

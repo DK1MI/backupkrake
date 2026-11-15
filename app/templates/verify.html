@@ -8,7 +8,9 @@
   </div>
   {% if offsite_configured %}
   <div class="buttons">
-    <form method="post" action="/verify/run"><button class="primary">Run restore test now</button></form>
+    {% for o in offsite_targets %}
+    <form method="post" action="/verify/run?target_id={{ o.id }}"><button class="{{ 'primary' if loop.first else '' }}">Run restore test{{ ': ' ~ o.name if offsite_targets|length > 1 else ' now' }}</button></form>
+    {% endfor %}
   </div>
   {% endif %}
 </div>

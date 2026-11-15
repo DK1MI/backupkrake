@@ -15,7 +15,7 @@ purpose**, because storing the clients' uid/gid needs it.
 | `app/main.py` | All routes, form parsing/validation, login (single admin, session cookie), template filters |
 | `app/backup.py` | rsync pull into `hosts/<name>/<YYYY-MM-DD_HHMMSS>.partial` → rename; `--link-dest` hardlinks; retention; path probing; `rsync_hint()` error explanations; backup-window watchdog |
 | `app/restore.py` | Push-restore with the separate restore key; staging/original/custom targets; dry runs |
-| `app/offsite.py` | restic upload of each host's latest snapshot + `/config` export; init/check/unlock/restore |
+| `app/offsite.py` | Offsite *targets* (list in setting `offsite_targets`, migrated from the old single `offsite` setting); restic upload of the selected hosts' latest snapshots + `/config` export; init/check/unlock/restore; one lock per target |
 | `app/verify.py` | Plausibility check after each backup (pure `plausibility()`, called from `backup._transfer`); content check against the client (`verify` run: dry-run `rsync --checksum` into the latest snapshot, `ItemCounter` parses itemize lines); offsite restore test (`restic check --read-data-subset` + `restic dump` of random files, SHA-256 against the local snapshot) |
 | `app/usage.py` | Per-host storage figures from runs' rsync stats (`transferred_size` = new data thanks to `--link-dest`); server-rendered SVG bar-chart geometry, full copies capped; hourly `/data` samples (`disk_samples` table) and the least-squares fill-up forecast |
 | `app/presets.py` | Database/container pre-command presets for the host form; each is a `( set -e; … )` block so they combine with `&&` and a failed dump aborts the backup |
@@ -87,6 +87,11 @@ purpose**, because storing the clients' uid/gid needs it.
   `retry_minutes` and a `schedule`/`retry` trigger the run ends `skipped` (`stats.unreachable`) and
   `scheduler.schedule_retry()` adds a one-off `retry-<id>` DateTrigger job, bounded by the next cron run
   and the backup window. Retry jobs live in memory only; any successful backup cancels them.
+- **Offsite targets:** each run of a target is created with `run_owner(target)`, i.e. host_id NULL and
+  host_name = the target's name, which is how lists, the dashboard and notifications attribute it.
+  Renaming a target therefore detaches its old runs from it. `get_settings()`/`save_settings()`/
+  `run_offsite()` without a target id mean the first target (kept for simple callers and tests).
+  A target's `window` reuses `backup.window_guard()`; scheduler jobs are `target-<id>`.
 - **Restore with `--delete`** passes the host's excludes so excluded paths (docker, caches) are
   protected, and deleting is refused for whole-snapshot restores.
 - **Static files:** reference them in templates as `{{ static('style.css') }}`, never as a plain
@@ -128,15 +133,14 @@ bump it when releasing.
   `renderProgress` in `app.js`) has no automated tests. `renderProgress` was checked manually in
   headless Chrome.
 
-## Next up (agreed 2026-11-15, implement in the next session)
+## Feature plan agreed 2026-11-15 (all done in v0.4–v0.6)
 
 1. ~~**Retry / catch-up for hosts that are off**~~ – done (v0.5).
 2. ~~**Disk space alerts and forecast**~~ – done (v0.4).
 3. ~~**Pinned snapshots**~~ – done (v0.4).
 4. ~~**Find a file across snapshots**~~ – done (v0.6).
 5. ~~**Presets for consistent database/container backups**~~ – done (v0.5).
-6. **Second offsite target and per-host offsite selection:** e.g. USB disk/NAS in addition to the
-   cloud (3-2-1); choose which hosts go offsite; offsite backup windows.
+6. ~~**Second offsite target and per-host offsite selection**~~ – done (v0.6).
 7. ~~**Per-host disk usage chart**~~ – done (v0.4).
 
 Not chosen for now: Wake-on-LAN/shutdown, email notifications, Prometheus `/metrics`, duplicating

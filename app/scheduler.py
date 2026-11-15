@@ -11,7 +11,6 @@ from . import backup, config, db, notify, offsite, verify, windows
 
 log = logging.getLogger("backupkrake")
 _sched: AsyncIOScheduler | None = None
-OFFSITE_JOB = "offsite"
 VERIFY_JOB = "offsite-verify"
 CONTENT_JOB = "content-check"
 HOUSEKEEPING_JOB = "housekeeping"
@@ -32,12 +31,12 @@ async def _backup_job(host_id: int) -> None:
     await backup.run_backup(host_id, trigger="schedule")
 
 
-async def _offsite_job() -> None:
-    await offsite.run_offsite(trigger="schedule")
+async def _offsite_job(target_id: int) -> None:
+    await offsite.run_offsite(trigger="schedule", target_id=target_id)
 
 
 async def _verify_job() -> None:
-    await verify.run_restore_test(trigger="schedule")
+    await verify.run_all_restore_tests(trigger="schedule")
 
 
 async def _content_job() -> None:
@@ -92,17 +91,31 @@ def remove_host(host_id: int) -> None:
     cancel_retry(host_id)
 
 
+def _target_job_id(target_id: int) -> str:
+    return f"target-{target_id}"
+
+
 def sync_offsite() -> None:
+    """One cron job per enabled, configured offsite target."""
     if not _sched:
         return
-    if _sched.get_job(OFFSITE_JOB):
-        _sched.remove_job(OFFSITE_JOB)
-    s = offsite.get_settings()
-    if s["enabled"] and offsite.configured(s) and s["schedule"].strip():
-        _sched.add_job(
-            _offsite_job, CronTrigger.from_crontab(s["schedule"].strip()),
-            id=OFFSITE_JOB, coalesce=True, max_instances=1, misfire_grace_time=3600,
-        )
+    for job in _sched.get_jobs():
+        if job.id.startswith("target-"):
+            _sched.remove_job(job.id)
+    for t in offsite.targets():
+        if t["enabled"] and offsite.configured(t) and t["schedule"].strip():
+            try:
+                trigger = CronTrigger.from_crontab(t["schedule"].strip())
+            except ValueError as e:
+                log.error("invalid schedule for offsite target %s: %s", t["name"], e)
+                continue
+            _sched.add_job(_offsite_job, trigger, id=_target_job_id(t["id"]), args=[t["id"]],
+                           coalesce=True, max_instances=1, misfire_grace_time=3600)
+
+
+def next_offsite(target_id: int) -> datetime | None:
+    job = _sched.get_job(_target_job_id(target_id)) if _sched else None
+    return job.next_run_time if job else None
 
 
 def sync_verify() -> None:
@@ -113,7 +126,7 @@ def sync_verify() -> None:
     if _sched.get_job(CONTENT_JOB):
         _sched.remove_job(CONTENT_JOB)
     v = verify.get_settings()
-    if v["restore_test_enabled"] and offsite.configured() and v["restore_test_schedule"].strip():
+    if v["restore_test_enabled"] and offsite.any_configured() and v["restore_test_schedule"].strip():
         _sched.add_job(
             _verify_job, CronTrigger.from_crontab(v["restore_test_schedule"].strip()),
             id=VERIFY_JOB, coalesce=True, max_instances=1, misfire_grace_time=3600,
@@ -196,8 +209,8 @@ def times_outside_window(host: dict, count: int = 50) -> list[datetime]:
     return out
 
 
-def next_run(host_id: int | None = None) -> datetime | None:
+def next_run(host_id: int) -> datetime | None:
     if not _sched:
         return None
-    job = _sched.get_job(_job_id(host_id) if host_id is not None else OFFSITE_JOB)
+    job = _sched.get_job(_job_id(host_id))
     return job.next_run_time if job else None
