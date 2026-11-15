@@ -21,6 +21,43 @@ Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a w
 - **Web UI**: manage hosts, cron schedules, live logs with a progress bar (files checked, data transferred, speed, time left), run history and a snapshot browser with file and `.tar.gz` downloads.
 - **Encrypted offsite copies**: restic uploads the latest snapshots to one or more targets (S3, B2, SFTP, a rest-server, a USB disk, …), each with its own schedule, upload window, host selection and retention, and a restore option.
 
+## Contents
+
+- [Screenshots](#screenshots)
+- [Deploy with Docker Compose](#deploy-with-docker-compose)
+  - [1. Create a directory and a compose file](#1-create-a-directory-and-a-compose-file)
+  - [2. Start it](#2-start-it)
+  - [3. Updating](#3-updating)
+  - [4. Disaster recovery](#4-disaster-recovery)
+  - [Network access](#network-access)
+  - [Configuration reference](#configuration-reference)
+  - [Building the image yourself](#building-the-image-yourself)
+- [Adding a client](#adding-a-client)
+  - [Hosts where you aren't root (home folder only)](#hosts-where-you-arent-root-home-folder-only)
+  - [Backup windows and bandwidth limits](#backup-windows-and-bandwidth-limits)
+  - [Databases and containers](#databases-and-containers)
+  - [Laptops and desktops that aren't always on](#laptops-and-desktops-that-arent-always-on)
+- [How snapshots work](#how-snapshots-work)
+  - [Directory layout](#directory-layout)
+  - [What happens during a backup](#what-happens-during-a-backup)
+  - [Pinned snapshots and notes](#pinned-snapshots-and-notes)
+  - [Why deleting a snapshot is safe](#why-deleting-a-snapshot-is-safe)
+  - [How much space it uses](#how-much-space-it-uses)
+  - [Disk usage per host](#disk-usage-per-host)
+  - [Limits of hard-link deduplication](#limits-of-hard-link-deduplication)
+  - [Hard links on the client](#hard-links-on-the-client)
+  - [Offsite copies](#offsite-copies)
+- [Restoring](#restoring)
+- [Offsite (restic)](#offsite-restic)
+- [Verifying backups](#verifying-backups)
+- [Notifications](#notifications)
+  - [Overdue backups](#overdue-backups)
+  - [Backup storage running low](#backup-storage-running-low)
+  - [Heartbeat](#heartbeat)
+  - [Message contents](#message-contents)
+- [Development](#development)
+- [License](#license)
+
 ## Screenshots
 
 ![](screenshots/backupkrake-01.jpg)
