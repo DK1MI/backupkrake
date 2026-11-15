@@ -17,7 +17,7 @@ purpose**, because storing the clients' uid/gid needs it.
 | `app/restore.py` | Push-restore with the separate restore key; staging/original/custom targets; dry runs |
 | `app/offsite.py` | restic upload of each host's latest snapshot + `/config` export; init/check/unlock/restore |
 | `app/verify.py` | Plausibility check after each backup (pure `plausibility()`, called from `backup._transfer`); content check against the client (`verify` run: dry-run `rsync --checksum` into the latest snapshot, `ItemCounter` parses itemize lines); offsite restore test (`restic check --read-data-subset` + `restic dump` of random files, SHA-256 against the local snapshot) |
-| `app/usage.py` | Per-host storage figures from runs' rsync stats (`transferred_size` = new data thanks to `--link-dest`); server-rendered SVG bar-chart geometry, full copies capped |
+| `app/usage.py` | Per-host storage figures from runs' rsync stats (`transferred_size` = new data thanks to `--link-dest`); server-rendered SVG bar-chart geometry, full copies capped; hourly `/data` samples (`disk_samples` table) and the least-squares fill-up forecast |
 | `app/notify.py` | ntfy/Pushover delivery, run-finished hook, overdue-host check, heartbeat; hourly `housekeeping()` |
 | `app/runner.py` | Run rows + per-run log files, subprocess streaming, cancel/stop (`interrupted` vs `cancelled`), `finish_hooks` |
 | `app/scheduler.py` | Cron jobs per host, offsite job, hourly housekeeping job, `times_outside_window()` |
@@ -126,8 +126,7 @@ bump it when releasing.
 1. **Retry / catch-up for hosts that are off:** when a scheduled backup fails because the host is
    unreachable, retry every 15–30 min until one succeeds (bounded, e.g. until the next scheduled run),
    or start as soon as the host is reachable again. Aimed at laptops/desktops.
-2. **Disk space alerts and forecast:** track per-host growth, warn (notification) before `/data` runs
-   full, and estimate when it will be full at the current rate.
+2. ~~**Disk space alerts and forecast**~~ – done (v0.4).
 3. ~~**Pinned snapshots**~~ – done (v0.4).
 4. **Find a file across snapshots:** search by name/glob over a host's snapshots and list every
    version (snapshot, date, size) with links to browse/download/restore.

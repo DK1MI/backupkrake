@@ -13,6 +13,16 @@
     <div class="value">{{ usage.free|bytes }} free</div>
     <div class="meter"><span style="width: {{ '%.1f'|format(used_pct) }}%" class="{{ 'warn' if used_pct > 85 else '' }}"></span></div>
     <div class="sub">{{ usage.used|bytes }} of {{ usage.total|bytes }} used</div>
+    {% set low_space = disk_problem and disk_problem[0] == 'failure' %}
+    {% if low_space %}<div class="sub text-warn"><strong>⚠ only {{ '%.1f'|format(forecast.free_pct) }} % free</strong></div>{% endif %}
+    <div class="sub{% if disk_problem and not low_space %} text-warn{% endif %}">
+      {% if forecast.days_left is not none %}
+        {% if disk_problem and not low_space %}<strong>⚠ full in about {{ '%.0f'|format(forecast.days_left) }} days</strong>
+        {% else %}full in about {{ '%.0f'|format(forecast.days_left) }} days{% endif %}
+        (+{{ forecast.rate|bytes }}/day)
+      {% elif forecast.rate is not none %}not growing
+      {% else %}forecast after two days of data{% endif %}
+    </div>
   </div>
   <div class="tile">
     <div class="label">Offsite (restic)</div>

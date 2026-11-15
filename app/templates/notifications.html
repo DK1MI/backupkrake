@@ -89,6 +89,22 @@
   </fieldset>
 
   <fieldset class="card">
+    <legend>Backup storage</legend>
+    <div class="grid">
+      <label>Alert when free space drops below
+        <span class="with-unit"><input name="disk_free_pct" type="number" min="0" max="90" value="{{ s.disk_free_pct }}"> %</span>
+        <small>0 = off.</small>
+      </label>
+      <label>… or the storage will be full within
+        <span class="with-unit"><input name="disk_full_days" type="number" min="0" max="365" value="{{ s.disk_full_days }}"> days</span>
+        <small>Forecast from the growth over the last 30 days. 0 = off.</small>
+      </label>
+    </div>
+    <p class="sub">Checked hourly; reminders repeat once a day, and you get an “OK again” message when it clears (if enabled above).
+      The dashboard shows the current forecast.</p>
+  </fieldset>
+
+  <fieldset class="card">
     <legend>Heartbeat (dead man's switch)</legend>
     <label>Heartbeat URL
       <input name="heartbeat_url" value="{{ s.heartbeat_url }}" placeholder="https://hc-ping.com/your-uuid">

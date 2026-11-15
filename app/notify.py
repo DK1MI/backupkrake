@@ -12,7 +12,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timedelta
 
-from . import db, runner
+from . import db, runner, usage
 
 log = logging.getLogger("backupkrake")
 
@@ -38,10 +38,13 @@ DEFAULTS = {
     "base_url": "",         # e.g. http://nas.lan:8080, used for click-through links
     "stale_days": 2,        # alert when a host has no successful backup for this long; 0 = off
     "heartbeat_url": "",    # pinged hourly (healthchecks.io, Uptime Kuma push monitor, ...)
+    "disk_free_pct": 10,    # alert when /data has less free space than this; 0 = off
+    "disk_full_days": 30,   # alert when the trend says /data is full within this many days; 0 = off
 }
 
 STALE_STATE_KEY = "stale_state"        # {host_id: iso time of last overdue alert}
 STALE_REMIND = timedelta(hours=24)
+DISK_STATE_KEY = "disk_alert"          # {"since": iso, "last": iso} while the disk alert is active
 
 # Last delivery result per provider, shown on the settings page.
 last_result: dict[str, str] = {}
@@ -324,6 +327,55 @@ async def check_stale(now: datetime | None = None) -> list[str]:
     return alerted
 
 
+# --- backup storage ----------------------------------------------------------------
+
+def disk_problem(fc: dict, s: dict) -> tuple[str, str] | None:
+    """(severity, sentence) if /data needs attention, else None."""
+    pct, days = float(s.get("disk_free_pct") or 0), float(s.get("disk_full_days") or 0)
+    if pct > 0 and fc["free_pct"] < pct:
+        return "failure", f"only {fc['free_pct']:.1f} % free on the backup storage (alert below {pct:g} %)"
+    if days > 0 and fc["days_left"] is not None and fc["days_left"] < days:
+        return "warning", (f"the backup storage will be full in about {fc['days_left']:.0f} days "
+                           f"({fc['full_on']:%Y-%m-%d}) at the current rate (alert below {days:g} days)")
+    return None
+
+
+async def check_disk(now: datetime | None = None, disk: dict | None = None) -> str | None:
+    """Alert when /data runs low or is forecast to run full; remind daily; announce recovery.
+    Returns the problem sentence if an alert was sent."""
+    s = get_settings()
+    now = now or datetime.now().astimezone()
+    disk = disk or usage.disk_now()
+    fc = usage.forecast(now, disk)
+    problem = disk_problem(fc, s)
+    state = db.get_setting(DISK_STATE_KEY, {}) or {}
+    can_send = ntfy_configured(s) or pushover_configured(s)
+    if problem is None:
+        if state:
+            db.set_setting(DISK_STATE_KEY, {})
+            if can_send and s["on_recovery"]:
+                await asyncio.to_thread(deliver, "Backup storage OK again",
+                                        f"{usage.fmt_bytes(disk['free'])} free ({fc['free_pct']:.1f} %).",
+                                        severity="recovery", settings=s)
+        return None
+    if state.get("last") and now - datetime.fromisoformat(state["last"]) < STALE_REMIND:
+        return None
+    if not can_send:
+        return None
+    severity, sentence = problem
+    lines = [sentence[0].upper() + sentence[1:] + ".",
+             f"Free: {usage.fmt_bytes(disk['free'])} of {usage.fmt_bytes(disk['total'])}."]
+    if fc["rate"] is not None:
+        lines.append(f"Growth over the last {usage.FORECAST_DAYS} days: {usage.fmt_bytes(max(fc['rate'], 0))}/day.")
+    lines.append("Free space by reducing retention, deleting old snapshots or unpinning them, or add storage.")
+    base = (s.get("base_url") or "").strip().rstrip("/")
+    await asyncio.to_thread(deliver, "Backup storage running low", "\n".join(lines), severity=severity,
+                            click=f"{base}/" if base else "", settings=s)
+    db.set_setting(DISK_STATE_KEY, {"since": state.get("since") or now.isoformat(timespec="seconds"),
+                                    "last": now.isoformat(timespec="seconds")})
+    return sentence
+
+
 def ping_heartbeat(s: dict | None = None) -> str | None:
     """GET the heartbeat URL (blocking). Returns 'ok', an error, or None if not configured."""
     s = s or get_settings()
@@ -348,10 +400,15 @@ def ping_heartbeat(s: dict | None = None) -> str | None:
 
 
 async def housekeeping() -> None:
-    """Hourly job: overdue-host alerts and heartbeat ping."""
+    """Hourly job: overdue-host alerts, disk space sample and alert, heartbeat ping."""
     try:
         await check_stale()
     except Exception:  # noqa: BLE001
         log.exception("overdue check failed")
+    try:
+        usage.record_sample()
+        await check_disk()
+    except Exception:  # noqa: BLE001
+        log.exception("disk space check failed")
     # The ping proves the server, scheduler and event loop are alive.
     await asyncio.to_thread(ping_heartbeat)

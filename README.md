@@ -17,7 +17,7 @@ Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a w
 - **Retention**: keep the last N snapshots plus N daily, weekly and monthly ones, applied after every backup. Pin a snapshot (e.g. *before OS upgrade*) to keep it until you unpin it.
 - **Push-restore**: put files or folders from any snapshot back onto a client (staging dir, original location or another folder, even on another host), with a dry-run preview first.
 - **Backup verification**: every backup is compared with the previous one, and one that is suspiciously smaller (a disk that didn't mount, an empty volume) is flagged and reported. A content check compares a snapshot with the client file by file to find silent corruption. A scheduled offsite restore test reads back part of the restic repository and restores random files of every host, comparing them byte for byte with the local snapshots.
-- **Notifications**: ntfy and/or Pushover push messages when a backup fails or a host has had no successful backup for N days (optionally also warnings, offsite/restore failures, and "OK again"). An optional hourly heartbeat to healthchecks.io/Uptime Kuma covers the server itself being down.
+- **Notifications**: ntfy and/or Pushover push messages when a backup fails or a host has had no successful backup for N days, or when the backup storage runs low or is forecast to fill up (optionally also warnings, offsite/restore failures, and "OK again"). An optional hourly heartbeat to healthchecks.io/Uptime Kuma covers the server itself being down.
 - **Web UI**: manage hosts, cron schedules, live logs with a progress bar (files checked, data transferred, speed, time left), run history and a snapshot browser with file and `.tar.gz` downloads.
 - **Encrypted offsite copy**: restic uploads the latest snapshot of every host to S3, B2, SFTP, a rest-server, etc., with its own retention policy and a restore option.
 
@@ -339,6 +339,10 @@ Failed host backups always notify. Optional:
 Independently of individual runs, an hourly check alerts when a host has had **no successful backup for N days** (default 2, set on the Notifications page; override per host in its settings, 0 = never). It reminds once a day while the problem persists, and sends "Backups up to date again" when it's resolved. Overdue hosts are also marked on the dashboard.
 
 This catches what never produces a failed run: a disabled schedule, a stopped scheduler, or a server that was down. The first check runs about two minutes after startup.
+
+### Backup storage running low
+
+Every hour Backupkrake records how full `/data` is. From the growth over the last 30 days it estimates when the storage will be full; the dashboard shows it (*full in about 48 days (+1.2 GiB/day)*). A notification is sent when free space drops below 10 %, or when the forecast says *full within 30 days* (both configurable on the Notifications page, 0 = off). Reminders repeat once a day, and an *OK again* message follows when it clears. The forecast starts after two days of data.
 
 ### Heartbeat
 

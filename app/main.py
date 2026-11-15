@@ -6,7 +6,6 @@ import hmac
 import logging
 import re
 import secrets
-import shutil
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -214,14 +213,16 @@ async def dashboard(request: Request):
             "overdue": notify.is_overdue(h, nset),
             "max_age": notify.max_age_days(h, nset),
         })
-    usage = shutil.disk_usage(config.DATA_DIR)
+    disk = usage.disk_now()
+    forecast = usage.forecast(disk=disk)
+    disk_problem = notify.disk_problem(forecast, nset)
     off = offsite.get_settings()
     last_off = db.one("SELECT * FROM runs WHERE kind='offsite' ORDER BY id DESC LIMIT 1")
     active = db.query("SELECT * FROM runs WHERE status IN ('queued','running') ORDER BY id")
     for r in active:
         r["progress"] = runner.get_progress(r["id"])
     return render(
-        request, "dashboard.html", hosts=hosts, usage=usage, offsite=off,
+        request, "dashboard.html", hosts=hosts, usage=disk, forecast=forecast, disk_problem=disk_problem, offsite=off,
         offsite_configured=offsite.configured(off), last_offsite=last_off,
         next_offsite=scheduler.next_run(None), active=active,
     )
@@ -852,7 +853,8 @@ async def notifications_save(request: Request):
             s[k] = v
         if f.get(f"clear_{k}"):
             s[k] = ""
-    for k, lo, hi in (("ntfy_priority", 1, 5), ("pushover_priority", -2, 1), ("stale_days", 0, 365)):
+    for k, lo, hi in (("ntfy_priority", 1, 5), ("pushover_priority", -2, 1), ("stale_days", 0, 365),
+                      ("disk_free_pct", 0, 90), ("disk_full_days", 0, 365)):
         try:
             s[k] = int(f.get(k, s[k]))  # missing field keeps the saved value
             if not lo <= s[k] <= hi:

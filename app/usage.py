@@ -3,10 +3,11 @@
 Thanks to --link-dest, rsync's "Total transferred file size" of a run is the new
 data that snapshot added on disk (unchanged files are hardlinks and cost nothing).
 """
+import shutil
 from datetime import datetime, timedelta
 from math import floor, log10
 
-from . import db
+from . import config, db
 
 FULL_COPY_RATIO = 0.8  # a run that wrote >= 80 % of the snapshot size is (nearly) a full copy
 MIN_FULL_BYTES = 1024 ** 2
@@ -129,3 +130,53 @@ def summary(history: list[dict], now: datetime | None = None) -> dict:
         "runs_30d": len(recent),
         "avg_added": sum(incremental) / len(incremental) if incremental else None,
     }
+
+
+# --- /data free space and forecast --------------------------------------------------
+
+SAMPLE_KEEP_DAYS = 120
+FORECAST_DAYS = 30           # fit the trend over this window
+MIN_FORECAST_SPAN = 2        # days of samples needed before forecasting
+NOT_GROWING = 1024 ** 2      # bytes/day below which usage counts as flat
+
+
+def disk_now() -> dict:
+    d = shutil.disk_usage(config.DATA_DIR)
+    return {"total": d.total, "used": d.used, "free": d.free}
+
+
+def record_sample(now: datetime | None = None, disk: dict | None = None) -> None:
+    """Called hourly by housekeeping."""
+    now = now or datetime.now().astimezone()
+    d = disk or disk_now()
+    db.execute("INSERT OR REPLACE INTO disk_samples (time, total, used, free) VALUES (?, ?, ?, ?)",
+               (now.isoformat(timespec="seconds"), d["total"], d["used"], d["free"]))
+    db.execute("DELETE FROM disk_samples WHERE time < ?",
+               ((now - timedelta(days=SAMPLE_KEEP_DAYS)).isoformat(timespec="seconds"),))
+
+
+def forecast(now: datetime | None = None, disk: dict | None = None) -> dict:
+    """Least-squares trend of used space over the last 30 days.
+
+    Returns {"free_pct", "rate"} plus "days_left"/"full_on" when the disk is filling up;
+    "rate" (bytes/day) is None until there are enough samples."""
+    now = now or datetime.now().astimezone()
+    d = disk or disk_now()
+    out = {"free_pct": 100.0 * d["free"] / d["total"] if d["total"] else 100.0,
+           "rate": None, "days_left": None, "full_on": None}
+    rows = db.query("SELECT time, used FROM disk_samples WHERE time >= ? ORDER BY time",
+                    ((now - timedelta(days=FORECAST_DAYS)).isoformat(timespec="seconds"),))
+    pts = [((datetime.fromisoformat(r["time"]) - now).total_seconds() / 86400, r["used"]) for r in rows]
+    if len(pts) < 3 or pts[-1][0] - pts[0][0] < MIN_FORECAST_SPAN:
+        return out
+    n = len(pts)
+    mx = sum(x for x, _ in pts) / n
+    my = sum(y for _, y in pts) / n
+    var = sum((x - mx) ** 2 for x, _ in pts)
+    rate = sum((x - mx) * (y - my) for x, y in pts) / var if var else 0.0
+    out["rate"] = rate
+    if rate >= NOT_GROWING:
+        days = d["free"] / rate
+        out["days_left"] = days
+        out["full_on"] = now + timedelta(days=days)
+    return out

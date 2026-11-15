@@ -54,6 +54,12 @@ CREATE TABLE IF NOT EXISTS snapshot_meta (   -- pins and notes; rows only for sn
     note      TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (host_id, snapshot)
 );
+CREATE TABLE IF NOT EXISTS disk_samples (    -- hourly space of the /data filesystem, for the forecast
+    time      TEXT PRIMARY KEY,
+    total     INTEGER NOT NULL,
+    used      INTEGER NOT NULL,
+    free      INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL

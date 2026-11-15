@@ -247,3 +247,4 @@ code.copyable { word-break: break-all; }
 .usage-chart .bar .hit { fill: transparent; }
 .usage-chart .bar:hover .hit { fill: var(--code-bg); }
 .usage .hint { margin-top: .8rem; }
+.text-warn { color: var(--warn); }

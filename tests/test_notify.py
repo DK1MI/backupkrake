@@ -339,3 +339,70 @@ def test_migration_adds_column(tmp_path, monkeypatch):
         assert "max_age_days" in cols
     finally:
         db.close()
+
+
+# --- backup storage ------------------------------------------------------------------
+
+def _samples(days: int, used0: int, per_day: int, total: int):
+    """Hourly samples ending now; returns (now, current disk dict)."""
+    from datetime import datetime, timedelta
+
+    from app import usage
+    db.execute("DELETE FROM disk_samples")
+    now = datetime.now().astimezone()
+    for h in range(days * 24, -1, -1):
+        used = used0 + per_day * (days * 24 - h) // 24
+        usage.record_sample(now - timedelta(hours=h), {"total": total, "used": used, "free": total - used})
+    used = used0 + per_day * days
+    return now, {"total": total, "used": used, "free": total - used}
+
+
+def test_disk_forecast():
+    from app import usage
+    GiB = 1024 ** 3
+    now, disk = _samples(10, 500 * GiB, 5 * GiB, 1000 * GiB)
+    fc = usage.forecast(now, disk)
+    assert abs(fc["rate"] - 5 * GiB) < 0.01 * GiB
+    assert 89 < fc["days_left"] < 91  # 450 GiB free at 5 GiB/day
+    assert fc["free_pct"] == 45.0
+
+    now, disk = _samples(10, 500 * GiB, 0, 1000 * GiB)
+    fc = usage.forecast(now, disk)
+    assert fc["rate"] == 0 and fc["days_left"] is None
+
+    db.execute("DELETE FROM disk_samples")  # not enough data yet
+    assert usage.forecast(now, disk)["rate"] is None
+
+
+def test_disk_alert_reminder_and_recovery(server):
+    from datetime import timedelta
+    GiB = 1024 ** 3
+    # 5 GiB/day with 100 GiB free -> full in ~20 days (< 30): warning
+    now, disk = _samples(5, 875 * GiB, 5 * GiB, 1000 * GiB)
+    sent = asyncio.run(notify.check_disk(now, disk))
+    assert sent and "full in about 20 days" in sent
+    msg = ntfy_msgs()[-1]
+    assert msg["title"] == "Backup storage running low" and "Growth over the last 30 days: 5.0 GiB/day" in msg["message"]
+    assert msg["priority"] == 3  # forecast = warning priority
+
+    # no repeat within a day, reminder after a day
+    assert asyncio.run(notify.check_disk(now + timedelta(hours=2), disk)) is None
+    assert len(ntfy_msgs()) == 1
+    assert asyncio.run(notify.check_disk(now + timedelta(hours=25), disk))
+    assert len(ntfy_msgs()) == 2
+
+    # space freed and growth stopped: "OK again" once, state cleared
+    now, disk = _samples(5, 300 * GiB, 0, 1000 * GiB)
+    assert asyncio.run(notify.check_disk(now, disk)) is None
+    assert ntfy_msgs()[-1]["title"] == "Backup storage OK again"
+    assert db.get_setting(notify.DISK_STATE_KEY) == {}
+
+    # nearly full right now: failure priority
+    now, disk = _samples(5, 950 * GiB, 0, 1000 * GiB)
+    sent = asyncio.run(notify.check_disk(now, disk))
+    assert "only 5.0 % free" in sent and ntfy_msgs()[-1]["priority"] == 4
+
+    # both checks off
+    notify.save_settings({**notify.get_settings(), "disk_free_pct": 0, "disk_full_days": 0})
+    db.set_setting(notify.DISK_STATE_KEY, {})
+    assert asyncio.run(notify.check_disk(now + timedelta(days=2), disk)) is None
