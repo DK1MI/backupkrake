@@ -12,7 +12,7 @@ Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a w
 
 - **Pull over SSH**: the server connects to each client as `root` and copies files with `rsync`. Clients need only `rsync` and the server's public key, no agent.
 - **Non-root hosts**: back up just your home folder on systems where you only have a normal account (e.g. shared Unix systems), with a key locked to that folder.
-- **Hardlinked snapshots**: every snapshot is a complete, browsable directory tree. Unchanged files are hardlinked to the previous snapshot, so each new snapshot only uses space for changed files. See [Snapshots and retention](https://dk1mi.github.io/backupkrake/snapshots/).
+- **Hardlinked snapshots**: every snapshot is a complete, browsable directory tree. Unchanged files are hardlinked to the previous snapshot, so each new snapshot only uses space for changed files. See [Snapshots and retention](https://backupkrake.rz01.org/snapshots/).
 - **Backup windows & bandwidth limits**: per host, e.g. only between 22:00 and 06:00 at max 20 MiB/s; a backup still running when the window closes is stopped and resumes the next night.
 - **Retention**: keep the last N snapshots plus N daily, weekly and monthly ones, applied after every backup. Pin a snapshot (e.g. *before OS upgrade*) to keep it until you unpin it.
 - **Push-restore**: put files or folders from any snapshot back onto a client (staging dir, original location or another folder, even on another host), with a dry-run preview first.
@@ -21,7 +21,7 @@ Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a w
 - **Web UI**: manage hosts, cron schedules, live logs with a progress bar (files checked, data transferred, speed, time left), run history and a snapshot browser with file and `.tar.gz` downloads.
 - **Encrypted offsite copies**: restic uploads the latest snapshots to one or more targets (S3, B2, SFTP, a rest-server, a USB disk, …), each with its own schedule, upload window, host selection and retention, and a restore option.
 
-**📖 Manual: [dk1mi.github.io/backupkrake](https://dk1mi.github.io/backupkrake/)** (source in [`docs/`](docs/))
+**📖 Manual: [backupkrake.rz01.org](https://backupkrake.rz01.org/)** (source in [`docs/`](docs/))
 
 ![](screenshots/backupkrake-01.jpg)
 
@@ -64,18 +64,18 @@ Don't expose the web UI to the internet; use a VPN or a reverse proxy with extra
 
 ## Documentation
 
-The [manual](https://dk1mi.github.io/backupkrake/) covers everything in detail:
+The [manual](https://backupkrake.rz01.org/) covers everything in detail:
 
-- [Installation](https://dk1mi.github.io/backupkrake/installation/): storage planning, updating, HTTPS
-- [Adding hosts](https://dk1mi.github.io/backupkrake/hosts/): SSH keys and rrsync, home-folder hosts, BSD
-- [Configuring backups](https://dk1mi.github.io/backupkrake/backups/): paths, schedules, windows, retries, database presets
-- [Snapshots and retention](https://dk1mi.github.io/backupkrake/snapshots/): how the hard-link snapshots work, pins, disk usage
-- [Browsing, searching and restoring](https://dk1mi.github.io/backupkrake/restoring/)
-- [Offsite copies](https://dk1mi.github.io/backupkrake/offsite/): restic targets, SFTP, USB disks
-- [Verifying backups](https://dk1mi.github.io/backupkrake/verification/)
-- [Notifications](https://dk1mi.github.io/backupkrake/notifications/): ntfy, Pushover, overdue and disk alerts, heartbeat
-- [Operations](https://dk1mi.github.io/backupkrake/operations/): routine, **disaster recovery**, moving to a new disk, security
-- [Troubleshooting](https://dk1mi.github.io/backupkrake/troubleshooting/) and [Reference](https://dk1mi.github.io/backupkrake/reference/)
+- [Installation](https://backupkrake.rz01.org/installation/): storage planning, updating, HTTPS
+- [Adding hosts](https://backupkrake.rz01.org/hosts/): SSH keys and rrsync, home-folder hosts, BSD
+- [Configuring backups](https://backupkrake.rz01.org/backups/): paths, schedules, windows, retries, database presets
+- [Snapshots and retention](https://backupkrake.rz01.org/snapshots/): how the hard-link snapshots work, pins, disk usage
+- [Browsing, searching and restoring](https://backupkrake.rz01.org/restoring/)
+- [Offsite copies](https://backupkrake.rz01.org/offsite/): restic targets, SFTP, USB disks
+- [Verifying backups](https://backupkrake.rz01.org/verification/)
+- [Notifications](https://backupkrake.rz01.org/notifications/): ntfy, Pushover, overdue and disk alerts, heartbeat
+- [Operations](https://backupkrake.rz01.org/operations/): routine, **disaster recovery**, moving to a new disk, security
+- [Troubleshooting](https://backupkrake.rz01.org/troubleshooting/) and [Reference](https://backupkrake.rz01.org/reference/)
 
 ## Development
 

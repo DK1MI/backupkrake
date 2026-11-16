@@ -1,7 +1,7 @@
 # Backupkrake – notes for working on this repo
 
 Central, pull-based backup server for Linux/Unix hosts with a web UI, shipped as a Docker image
-(`ghcr.io/dk1mi/backupkrake`). The user manual is in `docs/` (MkDocs, published to GitHub Pages); the
+(`ghcr.io/dk1mi/backupkrake`). The user manual is in `docs/` (MkDocs, published to GitHub Pages at https://backupkrake.rz01.org/, custom domain set in the repo's Pages settings); the
 README is a short landing page. This file covers how the
 code is put together and what to watch out for when changing it.
 
