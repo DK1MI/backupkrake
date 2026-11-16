@@ -3,3 +3,5 @@ data/
 config/
 __pycache__/
 .pytest_cache/
+.venv-docs/
+site/

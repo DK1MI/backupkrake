@@ -1,0 +1,67 @@
+site_name: Backupkrake manual
+site_description: User manual for Backupkrake, a central pull-based backup server for Linux/Unix hosts.
+site_url: https://dk1mi.github.io/backupkrake/
+repo_url: https://github.com/DK1MI/backupkrake
+repo_name: DK1MI/backupkrake
+edit_uri: edit/main/docs/
+copyright: Apache License 2.0
+
+nav:
+  - Introduction: index.md
+  - Installation: installation.md
+  - Adding hosts: hosts.md
+  - Configuring backups: backups.md
+  - Snapshots and retention: snapshots.md
+  - Browsing, searching and restoring: restoring.md
+  - Offsite copies: offsite.md
+  - Verifying backups: verification.md
+  - Notifications: notifications.md
+  - Operations: operations.md
+  - Troubleshooting: troubleshooting.md
+  - Reference: reference.md
+
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/logo.svg
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: purple
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+
+validation:
+  links:
+    anchors: warn
