@@ -8,7 +8,7 @@ There are several ways to get data back, from a single file in the browser to a 
 | a file but you don't know when it last existed | [Find a file](#finding-a-file-across-snapshots) |
 | files back on the client (or on another host) | [Push-restore](#restoring-to-a-client) |
 | a large amount of data, quickly | [rsync from the server's disk](#restoring-from-the-servers-disk) |
-| data after the backup server itself is lost | [Offsite restore](offsite.md#restoring-from-offsite) and [Disaster recovery](operations.md#disaster-recovery) |
+| data after the backup server itself is lost | [Offsite restore](offsite.md#offsite-snapshots-and-restoring-from-offsite) and [Disaster recovery](operations.md#disaster-recovery) |
 
 ## Browsing and downloading
 

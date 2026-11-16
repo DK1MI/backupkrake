@@ -18,11 +18,11 @@ a copy hidden away offsite. The clients don't have to do anything; the octopus d
 ## How it works
 
 ```
-             ┌────────────── Backupkrake (Docker) ──────────────┐
-  web1 ◄─ssh─┤  scheduler ─► rsync pull ─► /data/hosts/web1/…   │
-  nas  ◄─ssh─┤                             /data/hosts/nas/…    ├─restic─► S3 / SFTP / USB disk
-  laptop ◄───┤  web UI · notifications · verification           │
-             └──────────────────────────────────────────────────┘
+               ┌──────── Backupkrake (Docker) ────────┐
+  web1   ◄─ssh─┤ rsync pull ─► /data/hosts/web1/…     │
+  nas    ◄─ssh─┤               /data/hosts/nas/…      ├─restic─► S3, SFTP,
+  laptop ◄─ssh─┤ scheduler · web UI · notifications   │          USB disk
+               └──────────────────────────────────────┘
 ```
 
 - **Pull, not push.** The server holds the SSH keys and starts every backup. Clients run no agent and

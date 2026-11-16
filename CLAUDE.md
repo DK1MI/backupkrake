@@ -1,7 +1,8 @@
 # Backupkrake – notes for working on this repo
 
 Central, pull-based backup server for Linux/Unix hosts with a web UI, shipped as a Docker image
-(`ghcr.io/dk1mi/backupkrake`). The README is the user-facing documentation; this file covers how the
+(`ghcr.io/dk1mi/backupkrake`). The user manual is in `docs/` (MkDocs, published to GitHub Pages); the
+README is a short landing page. This file covers how the
 code is put together and what to watch out for when changing it.
 
 ## Stack and layout
@@ -64,6 +65,8 @@ purpose**, because storing the clients' uid/gid needs it.
 - **Per-host lock** (`backup.host_lock`) serializes backups *and* restores for a host. A global
   semaphore (`BACKUPKRAKE_MAX_PARALLEL`) limits concurrent backups. `backup.in_use` keeps snapshots that
   are being read from being pruned.
+- **Cron:** always build triggers with `scheduler.cron_trigger()`, never `CronTrigger.from_crontab()`:
+  APScheduler 3 numbers weekdays from Monday = 0, cron from Sunday = 0.
 - **Backup windows** apply to `trigger == "schedule"` only. Runs started outside the window are
   recorded as `skipped`; a watchdog stops runs at the window's end (`interrupted`). Neither
   status sends notifications; the overdue check covers hosts that never finish.
@@ -105,7 +108,7 @@ purpose**, because storing the clients' uid/gid needs it.
 
 ```sh
 python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/pytest -q            # ~60 tests, ~2.5 min; needs rsync, rrsync and restic installed
+.venv/bin/pytest -q            # ~110 tests, ~4 min; needs rsync, rrsync and restic installed
 ```
 
 - Tests run **real rsync, real rrsync and a real local restic repository**. `tests/fakessh` stands in
@@ -124,8 +127,20 @@ smoke-tests the container (`/healthz`, login page, tools present), and pushes am
 Pushes happen on `main` (`latest`, `sha-…`) and on `v*` tags (`X.Y.Z`, `X.Y`), never for PRs.
 The GHCR package is public.
 
-Release: tag `vX.Y.Z` on `main` and push the tag. The README's deploy guide pins an image version;
+Release: tag `vX.Y.Z` on `main` and push the tag. The README quick start and the manual
+(`docs/installation.md`, `docs/operations.md`) pin an image version;
 bump it when releasing.
+
+## Manual (`docs/`)
+
+- **Keep it in sync.** A change to the UI, a default, a status or a behaviour updates the matching chapter
+  in the same commit. Field names and button labels in the manual are quoted exactly as the templates
+  show them.
+- Build and check locally: `python -m venv .venv-docs && .venv-docs/bin/pip install -r requirements-docs.txt`,
+  then `.venv-docs/bin/mkdocs build --strict` (broken links and anchors fail) or `mkdocs serve`.
+- `.github/workflows/docs.yml` builds on PRs and deploys to Pages on `main`. Pages must be set to
+  "GitHub Actions" as its source in the repository settings.
+- The logo and screenshot are copied into `docs/assets/`; MkDocs can't reference files outside `docs/`.
 
 ## Open items
 

@@ -12,7 +12,7 @@ Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a w
 
 - **Pull over SSH**: the server connects to each client as `root` and copies files with `rsync`. Clients need only `rsync` and the server's public key, no agent.
 - **Non-root hosts**: back up just your home folder on systems where you only have a normal account (e.g. shared Unix systems), with a key locked to that folder.
-- **Hardlinked snapshots**: every snapshot is a complete, browsable directory tree. Unchanged files are hardlinked to the previous snapshot, so each new snapshot only uses space for changed files. See [How snapshots work](#how-snapshots-work).
+- **Hardlinked snapshots**: every snapshot is a complete, browsable directory tree. Unchanged files are hardlinked to the previous snapshot, so each new snapshot only uses space for changed files. See [Snapshots and retention](https://dk1mi.github.io/backupkrake/snapshots/).
 - **Backup windows & bandwidth limits**: per host, e.g. only between 22:00 and 06:00 at max 20 MiB/s; a backup still running when the window closes is stopped and resumes the next night.
 - **Retention**: keep the last N snapshots plus N daily, weekly and monthly ones, applied after every backup. Pin a snapshot (e.g. *before OS upgrade*) to keep it until you unpin it.
 - **Push-restore**: put files or folders from any snapshot back onto a client (staging dir, original location or another folder, even on another host), with a dry-run preview first.
@@ -21,415 +21,61 @@ Backupkrake is a central, pull-based backup server for Linux/Unix hosts with a w
 - **Web UI**: manage hosts, cron schedules, live logs with a progress bar (files checked, data transferred, speed, time left), run history and a snapshot browser with file and `.tar.gz` downloads.
 - **Encrypted offsite copies**: restic uploads the latest snapshots to one or more targets (S3, B2, SFTP, a rest-server, a USB disk, …), each with its own schedule, upload window, host selection and retention, and a restore option.
 
-## Contents
-
-- [Screenshots](#screenshots)
-- [Deploy with Docker Compose](#deploy-with-docker-compose)
-  - [1. Create a directory and a compose file](#1-create-a-directory-and-a-compose-file)
-  - [2. Start it](#2-start-it)
-  - [3. Updating](#3-updating)
-  - [4. Disaster recovery](#4-disaster-recovery)
-  - [Network access](#network-access)
-  - [Configuration reference](#configuration-reference)
-  - [Building the image yourself](#building-the-image-yourself)
-- [Adding a client](#adding-a-client)
-  - [Hosts where you aren't root (home folder only)](#hosts-where-you-arent-root-home-folder-only)
-  - [Backup windows and bandwidth limits](#backup-windows-and-bandwidth-limits)
-  - [Databases and containers](#databases-and-containers)
-  - [Laptops and desktops that aren't always on](#laptops-and-desktops-that-arent-always-on)
-- [How snapshots work](#how-snapshots-work)
-  - [Directory layout](#directory-layout)
-  - [What happens during a backup](#what-happens-during-a-backup)
-  - [Pinned snapshots and notes](#pinned-snapshots-and-notes)
-  - [Why deleting a snapshot is safe](#why-deleting-a-snapshot-is-safe)
-  - [How much space it uses](#how-much-space-it-uses)
-  - [Disk usage per host](#disk-usage-per-host)
-  - [Limits of hard-link deduplication](#limits-of-hard-link-deduplication)
-  - [Hard links on the client](#hard-links-on-the-client)
-  - [Offsite copies](#offsite-copies)
-- [Restoring](#restoring)
-- [Offsite (restic)](#offsite-restic)
-- [Verifying backups](#verifying-backups)
-- [Notifications](#notifications)
-  - [Overdue backups](#overdue-backups)
-  - [Backup storage running low](#backup-storage-running-low)
-  - [Heartbeat](#heartbeat)
-  - [Message contents](#message-contents)
-- [Development](#development)
-- [License](#license)
-
-## Screenshots
+**📖 Manual: [dk1mi.github.io/backupkrake](https://dk1mi.github.io/backupkrake/)** (source in [`docs/`](docs/))
 
 ![](screenshots/backupkrake-01.jpg)
 
-## Deploy with Docker Compose
+## Quick start
 
-Prebuilt images for **amd64 and arm64** (e.g. Raspberry Pi 4/5, ARM NAS) are published to `ghcr.io/dk1mi/backupkrake`. You don't need to clone this repository to run it.
-
-### 1. Create a directory and a compose file
+Prebuilt images for **amd64 and arm64** are published to `ghcr.io/dk1mi/backupkrake`.
 
 ```sh
 mkdir -p /opt/backupkrake && cd /opt/backupkrake
+printf 'BACKUPKRAKE_ADMIN_PASSWORD=%s\n' "$(openssl rand -base64 18)" > .env && chmod 600 .env
 ```
 
-Create `docker-compose.yml`:
+`docker-compose.yml`:
 
 ```yaml
 services:
   backupkrake:
-    image: ghcr.io/dk1mi/backupkrake:0.6.0     # or :latest to follow main
+    image: ghcr.io/dk1mi/backupkrake:0.6.0
     container_name: backupkrake
     restart: unless-stopped
     ports:
-      - "8080:8080"                           # e.g. "192.168.1.5:8080:8080" to bind to one LAN address
+      - "8080:8080"
     environment:
-      TZ: Europe/Berlin                       # schedules and snapshot names use this timezone
-      BACKUPKRAKE_ADMIN_USER: admin
+      TZ: Europe/Berlin
       BACKUPKRAKE_ADMIN_PASSWORD: ${BACKUPKRAKE_ADMIN_PASSWORD:?set it in .env}
-      BACKUPKRAKE_MAX_PARALLEL: "2"           # host backups running at the same time
     volumes:
-      - /srv/backups:/data                    # snapshots: point this at your big disk
-      - ./config:/config                      # database, SSH keys, logs, restic cache
+      - /srv/backups:/data          # snapshots: a local disk with hard-link support (ext4, XFS, btrfs, ZFS)
+      - ./config:/config            # database, SSH keys, logs
 ```
 
-Put the admin password in a `.env` file next to it, so it isn't in the compose file:
-
 ```sh
-printf 'BACKUPKRAKE_ADMIN_PASSWORD=%s\n' "$(openssl rand -base64 18)" > .env
-chmod 600 .env
-cat .env      # note the password
-```
-
-**Choosing the data location:**
-- The `/data` volume must be on a local filesystem that supports hardlinks: ext4, xfs, btrfs or zfs. NFS/SMB shares from another machine won't work.
-- Unchanged files are hardlinked between snapshots, so the space needed is roughly the size of all clients' data plus what changes within your retention period.
-
-### 2. Start it
-
-```sh
-docker compose pull
-docker compose up -d
-docker compose logs -f      # Ctrl+C to stop following
-```
-
-Open `http://<server>:8080` and log in as `admin` with the password from `.env`. On first start the server creates its SSH keys in `config/ssh/`; the **Setup** page shows the lines to put on your clients (see [Adding a client](#adding-a-client)).
-
-The container runs as root on purpose. Storing the clients' file ownership (uid/gid) requires it.
-
-### 3. Updating
-
-```sh
-cd /opt/backupkrake
-# when pinned: change the version in docker-compose.yml first, e.g. 0.6.0 -> 0.7.0
-docker compose pull
 docker compose up -d
 ```
 
-Database changes are applied automatically on start. Running backups are interrupted by the restart; their partial data is kept and the next run resumes. To roll back, set the previous version and run `docker compose up -d` again.
-
-Available image tags:
-
-| Tag | Meaning |
-|-----|---------|
-| `0.6.0`, `0.6` | Released versions (from `vX.Y.Z` git tags, e.g. `v0.6.0`). Recommended. |
-| `latest` | Current `main` branch |
-| `sha-<commit>` | A specific commit |
-
-### 4. Disaster recovery
-
-`config/` holds what makes this installation work:
-- the SSH keys your clients trust
-- the database: hosts, schedules, settings, and the offsite repository and password
-
-With **"Also upload Backupkrake's own configuration"** in an offsite target's settings (on by default), every offsite run also uploads a consistent copy of it as a separate restic snapshot. It shows up as *Backupkrake configuration* in the offsite snapshot list.
-
-**Keep the restic repository URL, its password and any backend credentials outside this server** (e.g. in a password manager). They are stored in the database, but you need them to get the database back.
-
-If the server is lost, on the new machine:
-
-```sh
-mkdir -p /opt/backupkrake && cd /opt/backupkrake
-# 1. recreate docker-compose.yml and .env as in step 1 (a new admin password is fine)
-
-# 2. restore the configuration with the restic inside the image
-docker run --rm \
-  -e RESTIC_REPOSITORY='s3:https://…/bucket/backupkrake' -e RESTIC_PASSWORD='…' \
-  -e AWS_ACCESS_KEY_ID='…' -e AWS_SECRET_ACCESS_KEY='…' \
-  -v "$PWD/config:/restore" --entrypoint restic ghcr.io/dk1mi/backupkrake:0.6.0 \
-  restore latest --host _backupkrake-config --target /restore
-
-# 3. start: hosts, schedules, keys and settings are back
-docker compose up -d
-```
-
-The clients still trust the restored SSH keys, so the next scheduled backups simply run. The first one copies everything again, because the local snapshot history is gone. To get files back that only exist offsite, use **Offsite → *target* → Offsite snapshots → Restore to server**, or `restic restore <id> --target …` as above.
-
-If you don't use offsite backups, keep a copy of `config/` some other way:
-
-```sh
-tar czf backupkrake-config-$(date +%F).tar.gz -C /opt/backupkrake config .env docker-compose.yml
-```
-
-### Network access
-
-- The web UI is plain HTTP with a single admin login, which is fine on a home LAN. Don't forward port 8080 to the internet.
-- For remote access, use a VPN (WireGuard, Tailscale), or a reverse proxy with HTTPS and extra authentication in front of it.
-
-### Configuration reference
-
-| Environment variable | Default | Meaning |
-|---|---|---|
-| `BACKUPKRAKE_ADMIN_USER` | `admin` | Web UI user |
-| `BACKUPKRAKE_ADMIN_PASSWORD` | random | Web UI password. If unset, one is generated, printed to the log and stored in `config/initial_admin_password` |
-| `BACKUPKRAKE_MAX_PARALLEL` | `2` | Host backups running at the same time |
-| `TZ` | UTC | Timezone for schedules, backup windows and snapshot names |
-
-| Volume | Contents |
-|---|---|
-| `/data` | `hosts/<name>/<YYYY-MM-DD_HHMMSS>/` snapshots, `restore/` (offsite restores) |
-| `/config` | SQLite database, SSH keys, known_hosts, run logs, restic cache |
-
-### Building the image yourself
-
-The `docker-compose.yml` in this repository can also build from source:
-
-```sh
-git clone https://github.com/DK1MI/backupkrake.git && cd backupkrake
-# edit docker-compose.yml (password, timezone, data path)
-docker compose up -d --build
-```
-
-## Adding a client
-
-1. Install `rsync` (≥ 3.2.4 ships `rrsync`) on the client.
-2. Copy the line from the **Setup** page into `/root/.ssh/authorized_keys`:
-   ```
-   command="rrsync -ro /",restrict ssh-ed25519 AAAA... backupkrake
-   ```
-   This key can only *read* via rsync: no shell, no writes. Use the plain key without `command=` if you need pre/post commands such as database dumps.
-3. Make sure `PermitRootLogin prohibit-password` is set in the client's `sshd_config`.
-4. *Optional, for restores from the UI:* also add the restore key line from the **Setup** page:
-   ```
-   command="rrsync -wo /",restrict ssh-ed25519 AAAA... backupkrake-restore
-   ```
-   It's a separate key that can only *write*, so the backup key never needs write access.
-5. Add the host in the UI and click **Test connection** (it checks both keys). The client's SSH host key is learned on first contact; a changed key will be rejected (use "Forget SSH host key" after a reinstall).
-
-### Hosts where you aren't root (home folder only)
-
-You can also back up just your own home folder on a system where you have a normal account, e.g. a shared Unix system or a university login. No root access is needed there.
-
-1. Add the host and choose **Home folder only**. Enter your username; paths are relative to your home folder (`.` = all of it, `Documents` = just that folder), and excludes are anchored at the home folder (e.g. `/.cache/`).
-2. On that system, add this line to **your** `~/.ssh/authorized_keys` (the exact line is shown in the form and on the Setup page):
-   ```
-   command="rrsync -ro .",restrict ssh-ed25519 AAAA... backupkrake
-   ```
-   `.` means your home folder, because ssh starts forced commands there, so the key can only read inside it. For restores, add the restore key with `rrsync -wo .` the same way.
-3. **Test connection**, then back up.
-
-Notes:
-- **No `rrsync` there?** Copy the script to e.g. `~/bin/rrsync` (it needs `python3`) and use its full path in `command="…"`.
-- **No Python either:** use the plain key line. Relative paths still resolve in your home folder; the key then has the same rights as your account.
-- **Rootless containers:** Podman/Docker storage (`~/.local/share/containers/`, `~/.local/share/docker/`) is excluded by default. Its files belong to container sub-UIDs that your account can't read, and images can be pulled again. Back up important container volumes explicitly, e.g. with a pre-command `podman volume export`.
-- **ACLs/xattrs** are off by default for these hosts, since many shared and non-Linux systems don't support them over rsync.
-- **Restores** go to `~/.backupkrake-restore/…` by default (inside your home, invisible to other users), to the original place in your home, or to any folder relative to it.
-- **Be a good neighbour:** respect the system's usage policy; a backup window and bandwidth limit keep the load low.
-
-### Backup windows and bandwidth limits
-
-Each host can have a **backup window** like `22:00-06:00` (may cross midnight; several ranges: `01:00-05:00, 13:00-14:00`) and a **bandwidth limit** like `20M` (MiB/s) or `500K`/`500` (KiB/s).
-
-- Scheduled backups only start inside the window. One that would start outside it (e.g. because it waited for a free slot too long) is recorded as **skipped**.
-- A backup still running when the window ends is stopped and recorded as **interrupted**. Its partial data is kept and the next run resumes from it, so a large first backup can be spread over several nights.
-- **Back up now** ignores the window.
-- The host form warns if the cron schedule fires outside the window.
-- The bandwidth limit applies to backups from and restores to that host.
-- The post-command always runs once the pre-command has run, even if the backup is cancelled, interrupted or fails.
-
-### Databases and containers
-
-Copying the files of a running database can give a backup that won't restore. A dump made by the database itself is always consistent. In the host form, **Advanced → Database and container presets** fills in a tested pre-command and adds the dump folder (`/var/backups/backupkrake`, or `~/.backupkrake-dumps` for home-folder hosts) to the paths:
-
-| Preset | What it does |
-|---|---|
-| PostgreSQL | `pg_dumpall` as the postgres user → `postgresql.sql.gz` |
-| MySQL / MariaDB | `mariadb-dump`/`mysqldump --all-databases --single-transaction` via root's socket login → `mysql.sql.gz` |
-| SQLite | `sqlite3 FILE ".backup …"`, an online copy that's safe while the app writes |
-| Docker: PostgreSQL / MySQL / MariaDB container | the same dumps through `docker exec` |
-| Docker: all named volumes | each volume as a `.tar.gz` (Docker's own storage is excluded by default) |
-| Docker Compose: stop the project | `docker compose stop` before and `start` after the backup, for apps without a dump tool |
-
-Presets can be combined. Each command runs in its own `( set -e; … )` block, so a failing dump fails the pre-command and aborts the backup instead of backing up an old or half-written file. Replace the CAPITALISED placeholders (database file, container name, project folder) with your values. Pre/post-commands need the unrestricted key on the client; the read-only `rrsync` key only allows rsync.
-
-### Laptops and desktops that aren't always on
-
-Set **If the host is unreachable, retry every … minutes** (e.g. 30) in the host's schedule settings. A scheduled backup that finds the machine switched off, asleep or out of the network is then recorded as **skipped** (*host unreachable; retrying at 14:30*) and retried until it succeeds, the next scheduled backup is due, or the backup window ends. The host page shows the pending retry. These attempts don't send failure notifications; the overdue alert still tells you when a machine hasn't been backed up for days. Only real "not there" errors count (no route, timeout, connection refused, unknown host); an SSH key that isn't accepted is still a failure. Without the setting, or for "Back up now", an unreachable host is an ordinary failed backup.
-
-Interrupted and skipped runs don't send failure notifications. If a host never manages to finish inside its window, the overdue alert reports it.
-
-Configured paths that don't exist on a client (e.g. `/srv`) are skipped and noted in the run summary.
-
-## How snapshots work
-
-Backupkrake doesn't create hard links itself; **rsync does**. Backupkrake passes rsync the right options and manages the snapshot directories around it.
-
-### Directory layout
-
-```
-/data/hosts/web1/
-├── 2026-11-11_030000/          complete snapshot
-├── 2026-11-12_030000/          complete snapshot
-├── 2026-11-13_030000/          complete snapshot
-├── 2026-11-14_030000.partial/  backup in progress, or interrupted and waiting to resume
-└── latest -> 2026-11-13_030000
-```
-
-Every snapshot directory is a complete copy of the backed-up paths, laid out as on the client (`etc/nginx/nginx.conf`, `home/alice/…`). You can browse, copy or `rsync` from any of them directly. No tool or index is needed to read them.
-
-### What happens during a backup
-
-1. Backupkrake creates `<timestamp>.partial/`, or renames a leftover `.partial` directory from an interrupted run so the backup resumes from it.
-2. It runs rsync on the client's paths with this snapshot as the destination and the **previous complete snapshot** as `--link-dest`:
-   ```
-   rsync -aH --numeric-ids --relative --delete --link-dest=/data/hosts/web1/2026-11-13_030000 \
-         root@web1:/etc root@web1:/home  /data/hosts/web1/2026-11-14_030000.partial/
-   ```
-3. For every file, rsync looks for the same path in the `--link-dest` snapshot:
-   - **Unchanged** (same size and modification time, plus the same permissions, owner, group and, if enabled, ACLs/xattrs): rsync doesn't transfer anything. It creates a **hard link** to the file in the previous snapshot, a second directory entry for the same data on disk.
-   - **Changed:** rsync sends only the changed parts over the network (its delta algorithm), using the old version as a base. It then writes a **new, complete file** into the new snapshot. The old snapshot keeps the old version.
-   - **New:** copied in full.
-   - **Deleted on the client:** simply not present in the new snapshot. Older snapshots still have it.
-4. When rsync finishes, the directory is renamed from `.partial` to its timestamp and `latest` is pointed at it. Only then does it count as a snapshot. If rsync exits with code 23/24 (some files unreadable or vanished), the snapshot is still kept and the run is marked *warning*. On any other failure the `.partial` directory stays and the next run continues with it.
-5. Retention deletes snapshots that are no longer needed.
-
-### Pinned snapshots and notes
-
-On a host's page, **Pin / note** lets you add a note to any snapshot and pin it. A pinned snapshot is outside retention: it is never removed automatically and can't be deleted until you unpin it. It also doesn't use up one of the daily/weekly/monthly slots, so the regular series stays the same. Pins apply to the snapshots on the server; the offsite copy keeps its own retention. A pinned snapshot only costs the space of files that no other snapshot shares.
-
-### Why deleting a snapshot is safe
-
-A file's data on disk stays until its **last** hard link is removed. Deleting the oldest snapshot only removes its directory entries. Every file that a newer snapshot still links to keeps its data, and data that only existed in the deleted snapshot is freed. Snapshots don't depend on each other: any of them can be deleted in any order, and there is no chain to break as with classic incremental backups.
-
-### How much space it uses
-
-Roughly the size of the client's data once, plus a full copy of every file version that changed within your retention period. Ten snapshots of an unchanged 50 GB server use about 50 GB, plus some space for directories, because directories can't be hard-linked.
-
-To see the real usage, run `du` on the host directory, not on a single snapshot. `du` counts each hard-linked file once per invocation:
-
-```sh
-du -sh /data/hosts/web1                      # real space used by all snapshots of web1
-du -sh /data/hosts/web1/2026-11-13_030000    # the snapshot's apparent full size
-du -shc /data/hosts/web1/*/ | tail -n 20     # first snapshot full, later ones only what's new
-```
-
-### Disk usage per host
-
-Each host's page shows a **Disk usage** card: the size of the latest snapshot, how much data the backups added in the last 30 days and on average, and a bar chart of the new data each backup wrote (hover a bar for details, or open the table). The figure comes from rsync's statistics, which count exactly the files that had to be stored again; unchanged files are hard links and cost nothing. The first, full backup would dwarf the daily ones, so the chart is scaled to the incremental backups and full copies are drawn grey, capped and labelled with their size.
-
-### Limits of hard-link deduplication
-
-- **Whole files only.** A changed file is stored again in full. A 20 GB VM image or database file that changes daily costs 20 GB per kept snapshot. Exclude such files and back them up another way, for example with a dump in a pre-command, or keep fewer snapshots for that host.
-- **Matched by path.** A renamed or moved file counts as new, as does an identical file at another path.
-- **Metadata changes count.** Different metadata can't share one hard link, so a `chmod` or `chown` on a file also stores it again.
-- **Only the previous snapshot is compared.** A file that is deleted and later restored on the client is stored again.
-- **Same filesystem.** All snapshots of a host must be on one filesystem that supports hard links: ext4, XFS, btrfs or ZFS. Not NFS/SMB shares or FAT/exFAT.
-
-### Hard links on the client
-
-Files that are hard links of each other on the client stay hard-linked in the snapshot (rsync `-H`), so they are stored once. Restores recreate them the same way.
-
-### Offsite copies
-
-restic, used for offsite copies, doesn't use hard links. It splits files into content-defined chunks and stores each chunk only once, encrypted. That deduplication works within files, across files and across hosts, so a large file with small changes uploads only the changed chunks. Each run uploads only the latest local snapshot. restic doesn't re-read unchanged files, because Backupkrake passes the previous upload as `--parent` and ignores ctime, which hard-linking changes.
-
-## Restoring
-
-- **Push-restore from the UI**: browse a snapshot and click **Restore…** on a file or folder (or on a whole snapshot). Choose:
-  - **Staging directory** (default): `/var/tmp/backupkrake-restore/<host>-<snapshot>/<path>` on the client; nothing existing is touched.
-  - **Original location**: overwrites in place (requires an extra confirmation).
-  - **Other directory**: the path is recreated below any folder you choose.
-
-  The target can be any host, e.g. to move data to a replacement machine. Options: keep `*.bkrestore-<time>` copies of overwritten or deleted files (on by default), and *delete files not in the snapshot* to make a folder an exact copy. Paths excluded from backups are never deleted, and deleting isn't allowed for whole-snapshot restores.
-  **Preview (dry run)** lists every change without writing anything; the preview's result page has a button to run the same restore for real.
-- **Find a file**: on a host's page, search all its snapshots by name (`report`), pattern (`*.pdf`) or path (`nginx/*.conf`), optionally within one folder. Each version of a file is listed once, with the snapshots that contain it (*2026-11-03 … 2026-11-09 (7)*), because snapshots that share a file through a hard link hold the same version. Every version links to browse, download and restore. Very large hosts: narrow the search to a folder; a search stops after 30 seconds or 200 matching paths.
-- **Download**: browse a snapshot and download a file or a `.tar.gz` of a folder. A snapshot selector shows the same path in older snapshots.
-- **Bulk restore from the Docker host**: snapshots are plain directories:
-  ```sh
-  rsync -aHAX --numeric-ids /path/to/data/hosts/web1/latest/etc/nginx/ root@web1:/etc/nginx/
-  ```
-  (this needs a key that's allowed to write, i.e. not the `rrsync -ro` one).
-- **Disaster recovery**: *Offsite → target → Offsite snapshots → Restore to server* extracts a restic snapshot into `/data/restore/`. If the server itself is gone, any machine with `restic`, the repository URL and the password can restore.
-
-## Offsite (restic)
-
-The **Offsite** page lists your offsite *targets*. Each one is a separate restic repository with its own password, schedule, retention, host selection and upload window, so you can have e.g. a USB disk at home **and** a cloud bucket (a full 3-2-1 setup: three copies, two media, one offsite). Targets run independently and may upload at the same time.
-
-**Add target**, then set:
-
-- **Repository**: any restic backend, e.g. `s3:https://…/bucket/path`, `b2:bucket:path`, `sftp:user@host:/path`, `rest:https://…`, or a folder inside the container for a local disk (see below). Credentials go into *Backend environment* as `KEY=VALUE` lines.
-- **Hosts**: all hosts (including ones added later) or only selected ones, e.g. only the important machines to the cloud and everything to the USB disk. A host you take out keeps its existing snapshots in that repository until retention removes them.
-- **Schedule** and **upload window** (e.g. `01:00-06:00`): like a host's backup window, scheduled uploads only start inside it and are stopped when it ends; the next run continues. **Run now** ignores the window.
-- **Retention** (daily/weekly/monthly/yearly), **upload limit**, and whether to include Backupkrake's own configuration.
-
-Click **Initialise repository** once per target, then **Run now** or enable the schedule. Schedule uploads after your host backups usually finish. Runs and notifications carry the target's name (*offsite · USB disk*, *Offsite backup failed: USB disk*). Removing a target only stops uploads; the repository and its data are left alone.
-
-**SFTP**: Backupkrake logs in with its own offsite SSH key (`config/ssh/id_ed25519_offsite`, shared by all targets); a target's page shows the public key to add on the server, and the server's host key is learned on first contact. Use `sftp://user@host:PORT//path` for a non-standard port (Hetzner Storage Box: port 23, install the key with `install-ssh-key`).
-
-**USB disk or NAS share**: mount it on the Docker host and pass it into the container, then use the folder as the repository, e.g. `/offsite/usb`:
-
-```yaml
-    volumes:
-      - /srv/backupkrake:/data
-      - ./config:/config
-      - /mnt/usb-backup:/offsite/usb        # the mounted USB disk
-```
-
-If the disk isn't mounted when an upload runs, the run fails with *repository does not exist* (and is reported), rather than silently writing into the empty mount point's folder on the system disk, as long as you initialised the repository on the disk itself.
-
-Only the latest local snapshot of each host is uploaded; restic keeps its own history (deduplicated). Each restic snapshot is tagged with its local snapshot name.
-
-Unless disabled, each run also uploads Backupkrake's own configuration: a consistent copy of the database, the SSH keys, settings and logs, without the restic cache. It is stored under the restic host name `_backupkrake-config`, with the same retention. See [Disaster recovery](#4-disaster-recovery).
-
-**Store the restic password somewhere other than this server.**
-
-## Verifying backups
-
-A backup that finishes without errors isn't necessarily complete or intact. The **Verify** page has three checks:
-
-- **Plausibility check** (after every backup, on by default): the new snapshot's file count and total size are compared with the previous successful backup of that host. If either drops by 30 % or more (configurable, 0 = off), or the snapshot contains no data at all, the run is marked as a **warning** with an explanation such as *looks incomplete: 62 % fewer files (48,113 → 18,290) than the previous backup*. This always sends a notification, even when warnings are otherwise switched off. Typical causes: a disk or network share that wasn't mounted on the client, a container volume that came up empty, a renamed directory. The snapshot is kept, and the next backup compares with the new size, so an intended reduction is reported only once. Hosts whose previous snapshot is tiny (under 100 files / 10 MiB) are skipped.
-- **Content check against the client** (button **Verify against client** on a host's page, or scheduled for all hosts; off by default): runs `rsync --dry-run --checksum` from the client into the latest snapshot, which reads **every file on both sides** and compares the contents. Nothing is written. Normal backups decide by size and modification time, so they never notice a file whose content changed silently, e.g. bit rot on the backup disk or on the client. Files whose content differs although size and modification time are the same fail the check and are listed in the log (the check can't tell which side is wrong, so compare them by hand). Files that changed normally since the backup are only counted. The check takes about as long as a full backup but transfers almost nothing. Scheduled checks honour each host's backup window and never overlap a backup or restore of the same host.
-- **Offsite restore test** (manual, or scheduled; off by default): proves that the offsite copy can actually be restored with the password and keys you have.
-  1. `restic check --read-data-subset=5%` checks the repository structure and downloads and decrypts a random 5 % of the data (configurable), so the whole repository is read over time.
-  2. For every host, a few random non-empty files (5 by default) are read from the latest offsite snapshot with `restic dump` and compared byte for byte (SHA-256) with the local snapshot they were uploaded from. If that local snapshot has since been pruned, the files are only checked for readability and size.
-
-  The result is a run like any other (*offsite-verify · target*); the scheduled test checks every target in turn. A failed test is reported like a failed offsite backup. Schedule it when no offsite upload runs; a target runs only one restic job at a time.
-
-## Notifications
-
-On the **Notifications** page enable ntfy (public ntfy.sh or your own server; topic plus optional token or user/password) and/or Pushover (user key plus an application token from pushover.net/apps/build). **Send test** checks the setup.
-
-Failed host backups always notify. Optional:
-- offsite failures and restore failures (both on by default)
-- runs that finish with warnings
-- a "Backup OK again" message on the first good run after a failure (on by default)
-
-### Overdue backups
-
-Independently of individual runs, an hourly check alerts when a host has had **no successful backup for N days** (default 2, set on the Notifications page; override per host in its settings, 0 = never). It reminds once a day while the problem persists, and sends "Backups up to date again" when it's resolved. Overdue hosts are also marked on the dashboard.
-
-This catches what never produces a failed run: a disabled schedule, a stopped scheduler, or a server that was down. The first check runs about two minutes after startup.
-
-### Backup storage running low
-
-Every hour Backupkrake records how full `/data` is. From the growth over the last 30 days it estimates when the storage will be full; the dashboard shows it (*full in about 48 days (+1.2 GiB/day)*). A notification is sent when free space drops below 10 %, or when the forecast says *full within 30 days* (both configurable on the Notifications page, 0 = off). Reminders repeat once a day, and an *OK again* message follows when it clears. The forecast starts after two days of data.
-
-### Heartbeat
-
-Backupkrake can't tell you that it is itself down. For that, set a **heartbeat URL** (e.g. a [healthchecks.io](https://healthchecks.io) check with a 1-hour period, or an Uptime Kuma push monitor). Backupkrake fetches it every hour, and the external service alerts you when the pings stop.
-
-### Message contents
-
-Messages include the run summary and the last log lines. If you set the *Backupkrake URL*, tapping the notification opens the run. Delivery errors are logged and shown on the settings page; a broken notification service never affects backups.
+Open `http://<server>:8080`, log in as `admin` with the password from `.env`, and follow the **Setup**
+page: install `rsync` on a client, add the read-only key line to `/root/.ssh/authorized_keys`,
+add the host and click **Test connection**.
+
+Don't expose the web UI to the internet; use a VPN or a reverse proxy with extra authentication.
+
+## Documentation
+
+The [manual](https://dk1mi.github.io/backupkrake/) covers everything in detail:
+
+- [Installation](https://dk1mi.github.io/backupkrake/installation/): storage planning, updating, HTTPS
+- [Adding hosts](https://dk1mi.github.io/backupkrake/hosts/): SSH keys and rrsync, home-folder hosts, BSD
+- [Configuring backups](https://dk1mi.github.io/backupkrake/backups/): paths, schedules, windows, retries, database presets
+- [Snapshots and retention](https://dk1mi.github.io/backupkrake/snapshots/): how the hard-link snapshots work, pins, disk usage
+- [Browsing, searching and restoring](https://dk1mi.github.io/backupkrake/restoring/)
+- [Offsite copies](https://dk1mi.github.io/backupkrake/offsite/): restic targets, SFTP, USB disks
+- [Verifying backups](https://dk1mi.github.io/backupkrake/verification/)
+- [Notifications](https://dk1mi.github.io/backupkrake/notifications/): ntfy, Pushover, overdue and disk alerts, heartbeat
+- [Operations](https://dk1mi.github.io/backupkrake/operations/): routine, **disaster recovery**, moving to a new disk, security
+- [Troubleshooting](https://dk1mi.github.io/backupkrake/troubleshooting/) and [Reference](https://dk1mi.github.io/backupkrake/reference/)
 
 ## Development
 
@@ -439,9 +85,19 @@ python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 BACKUPKRAKE_DATA_DIR=./data BACKUPKRAKE_CONFIG_DIR=./config .venv/bin/uvicorn app.main:app --reload --port 8080
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) runs the tests on every push and pull request. It then builds the Docker image, checks that the container starts, and pushes it for amd64 and arm64 (only on `main` and `v*` tags, not for pull requests).
+The manual is built with MkDocs Material:
 
-The tests run real backups through a fake `ssh` (`tests/fakessh`) that invokes the actual `rrsync -ro` forced command, plus a real local restic repository.
+```sh
+python -m venv .venv-docs && .venv-docs/bin/pip install -r requirements-docs.txt
+.venv-docs/bin/mkdocs serve      # http://127.0.0.1:8000, reloads on changes
+```
+
+GitHub Actions runs the tests on every push and pull request, then builds the Docker image, checks that
+the container starts, and pushes it for amd64 and arm64 (only on `main` and `v*` tags). A second workflow
+builds the manual and publishes it to GitHub Pages.
+
+The tests run real backups through a fake `ssh` (`tests/fakessh`) that invokes the actual `rrsync -ro`
+forced command, plus a real local restic repository.
 
 ## License
 
