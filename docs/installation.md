@@ -51,7 +51,7 @@ Create `docker-compose.yml`:
 ```yaml
 services:
   backupkrake:
-    image: ghcr.io/dk1mi/backupkrake:0.6.0     # or :latest to follow main
+    image: ghcr.io/dk1mi/backupkrake:0.6.1     # or :latest to follow main
     container_name: backupkrake
     restart: unless-stopped
     ports:
@@ -142,7 +142,7 @@ When a proxy runs on the same Docker host, bind the port to localhost only: `"12
 
 ```sh
 cd /opt/backupkrake
-# when pinned: change the version in docker-compose.yml first, e.g. 0.6.0 -> 0.7.0
+# when pinned: change the version in docker-compose.yml first, e.g. 0.6.1 -> 0.7.0
 docker compose pull
 docker compose up -d
 ```
@@ -161,7 +161,7 @@ Read the [release notes](https://github.com/DK1MI/backupkrake/releases) before u
 
 | Tag | Meaning |
 |-----|---------|
-| `0.6.0`, `0.6` | Released versions (from git tags such as `v0.6.0`). **Recommended.** |
+| `0.6.1`, `0.6` | Released versions (from git tags such as `v0.6.1`). **Recommended.** |
 | `latest` | The current `main` branch. Newest features, least tested. |
 | `sha-<commit>` | One specific commit |
 

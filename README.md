@@ -39,7 +39,7 @@ printf 'BACKUPKRAKE_ADMIN_PASSWORD=%s\n' "$(openssl rand -base64 18)" > .env && 
 ```yaml
 services:
   backupkrake:
-    image: ghcr.io/dk1mi/backupkrake:0.6.0
+    image: ghcr.io/dk1mi/backupkrake:0.6.1
     container_name: backupkrake
     restart: unless-stopped
     ports:

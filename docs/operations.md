@@ -103,7 +103,7 @@ Use the restic inside the image. For an S3 repository:
 docker run --rm \
   -e RESTIC_REPOSITORY='s3:https://…/bucket/backupkrake' -e RESTIC_PASSWORD='…' \
   -e AWS_ACCESS_KEY_ID='…' -e AWS_SECRET_ACCESS_KEY='…' \
-  -v "$PWD/config:/restore" --entrypoint restic ghcr.io/dk1mi/backupkrake:0.6.0 \
+  -v "$PWD/config:/restore" --entrypoint restic ghcr.io/dk1mi/backupkrake:0.6.1 \
   restore latest --host _backupkrake-config --target /restore
 ```
 
@@ -120,7 +120,7 @@ account's password, or a copy of `id_ed25519_offsite` kept elsewhere. With your 
 docker run --rm -it \
   -e RESTIC_REPOSITORY='sftp://uXXXXX@uXXXXX.your-storagebox.de:23//backupkrake' -e RESTIC_PASSWORD='…' \
   -v ~/.ssh/id_ed25519:/root/.ssh/id_ed25519:ro \
-  -v "$PWD/config:/restore" --entrypoint restic ghcr.io/dk1mi/backupkrake:0.6.0 \
+  -v "$PWD/config:/restore" --entrypoint restic ghcr.io/dk1mi/backupkrake:0.6.1 \
   restore latest --host _backupkrake-config --target /restore
 ```
 
