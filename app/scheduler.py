@@ -16,12 +16,62 @@ CONTENT_JOB = "content-check"
 HOUSEKEEPING_JOB = "housekeeping"
 
 
+_DOW_NAMES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
+
+
+def _cron_dow(field: str) -> str:
+    """Translate a standard cron day-of-week field (0 or 7 = Sunday) into APScheduler's.
+
+    APScheduler 3 numbers weekdays from Monday = 0, so `from_crontab("0 6 * * 0")` would
+    fire on Mondays. Expanding the field into weekday names gives cron's meaning."""
+    f = field.strip().lower()
+    if f in ("*", "?"):
+        return "*"
+
+    def day(tok: str) -> int:
+        if tok[:3] in _DOW_NAMES and tok.isalpha():
+            return _DOW_NAMES.index(tok[:3])
+        if not tok.isdigit() or int(tok) > 7:
+            raise ValueError(f"invalid day of week: {tok!r}")
+        return int(tok) % 7
+
+    days: set[int] = set()
+    for part in f.split(","):
+        rng, _, step = part.partition("/")
+        if step and (not step.isdigit() or int(step) == 0):
+            raise ValueError(f"invalid step in day of week: {part!r}")
+        if rng in ("*", "?"):
+            lo, hi = 0, 6
+        elif "-" in rng:
+            a, b = rng.split("-", 1)
+            lo, hi = day(a), day(b)
+            if b.strip() == "7":
+                hi = 7  # "5-7" = Fri..Sun
+            if hi < lo:
+                raise ValueError(f"invalid range in day of week: {part!r}")
+        else:
+            lo = hi = day(rng)
+            if step:
+                hi = 6  # "1/2" = from Monday, every second day
+        days.update(d % 7 for d in range(lo, hi + 1, int(step or 1)))
+    return ",".join(_DOW_NAMES[d] for d in sorted(days))
+
+
+def cron_trigger(expr: str) -> CronTrigger:
+    """CronTrigger for a standard 5-field crontab expression, in the server's timezone."""
+    fields = expr.split()
+    if len(fields) != 5:
+        raise ValueError(f"wrong number of fields; got {len(fields)}, expected 5")
+    minute, hour, dom, month, dow = fields
+    return CronTrigger(minute=minute, hour=hour, day=dom, month=month, day_of_week=_cron_dow(dow))
+
+
 def validate_cron(expr: str) -> str | None:
     """Return an error message, or None if the expression is valid (empty = manual only)."""
     if not expr.strip():
         return None
     try:
-        CronTrigger.from_crontab(expr.strip())
+        cron_trigger(expr.strip())
     except ValueError as e:
         return str(e)
     return None
@@ -80,7 +130,7 @@ def sync_host(host: dict) -> None:
         cancel_retry(host["id"])
     if host["enabled"] and host["schedule"].strip():
         _sched.add_job(
-            _backup_job, CronTrigger.from_crontab(host["schedule"].strip()),
+            _backup_job, cron_trigger(host["schedule"].strip()),
             id=jid, args=[host["id"]], coalesce=True, max_instances=1, misfire_grace_time=3600,
         )
 
@@ -105,7 +155,7 @@ def sync_offsite() -> None:
     for t in offsite.targets():
         if t["enabled"] and offsite.configured(t) and t["schedule"].strip():
             try:
-                trigger = CronTrigger.from_crontab(t["schedule"].strip())
+                trigger = cron_trigger(t["schedule"].strip())
             except ValueError as e:
                 log.error("invalid schedule for offsite target %s: %s", t["name"], e)
                 continue
@@ -128,12 +178,12 @@ def sync_verify() -> None:
     v = verify.get_settings()
     if v["restore_test_enabled"] and offsite.any_configured() and v["restore_test_schedule"].strip():
         _sched.add_job(
-            _verify_job, CronTrigger.from_crontab(v["restore_test_schedule"].strip()),
+            _verify_job, cron_trigger(v["restore_test_schedule"].strip()),
             id=VERIFY_JOB, coalesce=True, max_instances=1, misfire_grace_time=3600,
         )
     if v["content_check_enabled"] and v["content_check_schedule"].strip():
         _sched.add_job(
-            _content_job, CronTrigger.from_crontab(v["content_check_schedule"].strip()),
+            _content_job, cron_trigger(v["content_check_schedule"].strip()),
             id=CONTENT_JOB, coalesce=True, max_instances=1, misfire_grace_time=3600,
         )
 
@@ -196,7 +246,7 @@ def times_outside_window(host: dict, count: int = 50) -> list[datetime]:
     """Upcoming scheduled fire times (of the next `count`) that fall outside the host's window."""
     if not (host["schedule"].strip() and host.get("backup_window", "").strip()):
         return []
-    trigger = CronTrigger.from_crontab(host["schedule"].strip())
+    trigger = cron_trigger(host["schedule"].strip())
     ranges = windows.parse(host["backup_window"])
     out, prev, now = [], None, datetime.now().astimezone()
     for _ in range(count):
